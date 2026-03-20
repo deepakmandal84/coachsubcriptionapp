@@ -50,6 +50,8 @@ services:
       dockerfile: docker/Dockerfile.web
     depends_on:
       - api
+    environment:
+      API_BASE_URL: "http://api:8080"
     ports:
       - "80:80"
 
