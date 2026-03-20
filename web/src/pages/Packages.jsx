@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../AuthContext'
 import { packagesApi } from '../api'
 import { PACKAGE_CATEGORIES, getThemeColorForCategory } from '../constants/categories'
+import { FiBox, FiEdit2, FiPlus, FiTrash2 } from 'react-icons/fi'
 
 export default function Packages() {
   const { refresh } = useAuth()
@@ -98,8 +99,13 @@ export default function Packages() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">Packages</h1>
-        <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Add package</button>
+        <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <span className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-indigo-100 text-indigo-700">
+            <FiBox />
+          </span>
+          Packages
+        </h1>
+        <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 inline-flex items-center gap-2 shadow-sm"><FiPlus />Add package</button>
       </div>
       {err && <p className="text-red-600 mb-2">{err}</p>}
       <div className="space-y-3">
@@ -126,8 +132,8 @@ export default function Packages() {
                   <td className="p-3">{p.totalSessions ?? 'Unlimited'}</td>
                   <td className="p-3">{p.type}</td>
                   <td className="p-3">
-                    <button onClick={() => openEdit(p)} className="text-blue-600 mr-2 hover:underline">Edit</button>
-                    <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:underline">Delete</button>
+                    <button onClick={() => openEdit(p)} className="inline-flex items-center gap-1 text-blue-600 mr-3 hover:underline"><FiEdit2 />Edit</button>
+                    <button onClick={() => handleDelete(p.id)} className="inline-flex items-center gap-1 text-red-600 hover:underline"><FiTrash2 />Delete</button>
                   </td>
                 </tr>
               ))}
@@ -151,8 +157,8 @@ export default function Packages() {
                 </div>
               </div>
               <div className="flex gap-2 pt-3">
-                <button onClick={() => openEdit(p)} className="flex-1 px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50">Edit</button>
-                <button onClick={() => handleDelete(p.id)} className="flex-1 px-3 py-2 rounded-xl border border-red-100 text-red-700 bg-red-50">Delete</button>
+                <button onClick={() => openEdit(p)} className="flex-1 px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 inline-flex items-center justify-center gap-1"><FiEdit2 />Edit</button>
+                <button onClick={() => handleDelete(p.id)} className="flex-1 px-3 py-2 rounded-xl border border-red-100 text-red-700 bg-red-50 inline-flex items-center justify-center gap-1"><FiTrash2 />Delete</button>
               </div>
             </div>
           ))}

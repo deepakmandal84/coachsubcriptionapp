@@ -97,7 +97,7 @@ export default function PublicSchedule() {
           </h1>
           <p className="text-sm text-gray-500">Browse schedule, packages, and book classes.</p>
           <div className="mt-3">
-            <LinkShare url={shareUrl} title="Share schedule" text="Join my class schedule" />
+            <LinkShare url={shareUrl} title="Share schedule" text="Join my class schedule" variant="compact" />
           </div>
         </div>
         <div className="p-6 space-y-4">

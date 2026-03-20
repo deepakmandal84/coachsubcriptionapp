@@ -85,7 +85,7 @@ export default function LinkShare({
         className={variant === 'compact' ? 'p-2 rounded border bg-white hover:bg-gray-50 inline-flex items-center justify-center' : 'px-3 py-2 text-sm rounded border bg-white hover:bg-gray-50 inline-flex items-center gap-2'}
         aria-label="Share"
       >
-        <FaShareAlt className="text-base" />
+        <FaShareAlt className="text-base text-sky-600" />
         {variant === 'full' && 'Share'}
       </button>
       <button
@@ -94,7 +94,7 @@ export default function LinkShare({
         className={variant === 'compact' ? 'p-2 rounded border bg-white hover:bg-gray-50 inline-flex items-center justify-center' : 'px-3 py-2 text-sm rounded border bg-white hover:bg-gray-50 inline-flex items-center gap-2'}
         aria-label="Share on WhatsApp"
       >
-        <FaWhatsapp className="text-base" />
+        <FaWhatsapp className="text-base" style={{ color: '#25D366' }} />
         {variant === 'full' && 'WhatsApp'}
       </button>
       <button
@@ -103,7 +103,7 @@ export default function LinkShare({
         className={variant === 'compact' ? 'p-2 rounded border bg-white hover:bg-gray-50 inline-flex items-center justify-center' : 'px-3 py-2 text-sm rounded border bg-white hover:bg-gray-50 inline-flex items-center gap-2'}
         aria-label="Share by Email"
       >
-        <FaEnvelope className="text-base" />
+        <FaEnvelope className="text-base text-blue-600" />
         {variant === 'full' && 'Email'}
       </button>
       <button
@@ -112,7 +112,12 @@ export default function LinkShare({
         className={variant === 'compact' ? 'p-2 rounded border bg-white hover:bg-gray-50 inline-flex items-center justify-center' : 'px-3 py-2 text-sm rounded border bg-white hover:bg-gray-50 inline-flex items-center gap-2'}
         aria-label="Share on Instagram"
       >
-        <FaInstagram className="text-base" />
+        <span
+          className="inline-flex items-center justify-center rounded"
+          style={{ background: 'linear-gradient(45deg, #F58529, #DD2A7B, #8134AF, #515BD4)' }}
+        >
+          <FaInstagram className="text-base text-white" />
+        </span>
         {variant === 'full' && 'Instagram'}
       </button>
       <button

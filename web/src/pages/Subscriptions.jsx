@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { subscriptionsApi, studentsApi, packagesApi, messageLogsApi } from '../api'
+import { FiBell, FiClock, FiCreditCard, FiLink2, FiPlus, FiX } from 'react-icons/fi'
+import LinkShare from '../components/LinkShare'
 
 const REMINDER_TEMPLATES = 'PaymentDue,PackageExpiring,RequestRenewal'
 
@@ -90,23 +92,30 @@ export default function Subscriptions() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">Subscriptions</h1>
+        <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <span className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-violet-100 text-violet-700">
+            <FiCreditCard />
+          </span>
+          Subscriptions
+        </h1>
         {activeTab === 'subscriptions' && (
-          <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">New subscription</button>
+          <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 inline-flex items-center gap-2 shadow-sm"><FiPlus />New subscription</button>
         )}
       </div>
 
       <div className="flex gap-1 border-b border-gray-200 mb-4">
         <button
           onClick={() => setActiveTab('subscriptions')}
-          className={`px-4 py-2 text-sm font-medium rounded-t ${activeTab === 'subscriptions' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'subscriptions' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
         >
+          <FiCreditCard />
           Subscriptions
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 text-sm font-medium rounded-t ${activeTab === 'history' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'history' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
         >
+          <FiClock />
           Reminder history
         </button>
       </div>
@@ -148,12 +157,12 @@ export default function Subscriptions() {
                     <td className="p-3">
                       <span className={s.paymentStatus === 'Due' ? 'text-amber-600 font-medium' : ''}>{s.paymentStatus}</span>
                       {s.paymentStatus === 'Due' && (
-                        <button onClick={() => openPayment(s)} className="ml-2 text-blue-600 text-sm hover:underline">Mark paid</button>
+                        <button onClick={() => openPayment(s)} className="ml-2 text-blue-600 text-sm hover:underline inline-flex items-center gap-1"><FiCreditCard />Mark paid</button>
                       )}
                     </td>
                     <td className="p-3">
-                      <button onClick={() => sendReminder(s)} className="text-blue-600 text-sm mr-2 hover:underline">Remind</button>
-                      <button onClick={() => getParentLink(s)} className="text-blue-600 text-sm hover:underline">Parent link</button>
+                      <button onClick={() => sendReminder(s)} className="text-blue-600 text-sm mr-3 hover:underline inline-flex items-center gap-1"><FiBell />Remind</button>
+                      <button onClick={() => getParentLink(s)} className="text-blue-600 text-sm hover:underline inline-flex items-center gap-1"><FiLink2 />Parent link</button>
                     </td>
                   </tr>
                 ))}
@@ -187,14 +196,17 @@ export default function Subscriptions() {
                 </div>
                 <div className="flex flex-wrap gap-2 pt-3">
                   {s.paymentStatus === 'Due' && (
-                    <button onClick={() => openPayment(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm">
+                    <button onClick={() => openPayment(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm inline-flex items-center justify-center gap-1">
+                      <FiCreditCard />
                       Mark paid
                     </button>
                   )}
-                  <button onClick={() => sendReminder(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm">
+                  <button onClick={() => sendReminder(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm inline-flex items-center justify-center gap-1">
+                    <FiBell />
                     Remind
                   </button>
-                  <button onClick={() => getParentLink(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm">
+                  <button onClick={() => getParentLink(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm inline-flex items-center justify-center gap-1">
+                    <FiLink2 />
                     Parent link
                   </button>
                 </div>
@@ -356,8 +368,18 @@ export default function Subscriptions() {
             <h2 className="text-lg font-semibold mb-2">Parent portal link</h2>
             <p className="text-sm text-gray-500 mb-2">Share this link with the parent (read-only view + request renewal).</p>
             <input readOnly value={parentLinkUrl} className="w-full border rounded px-3 py-2 text-sm bg-gray-50" />
-            <button type="button" onClick={() => { navigator.clipboard.writeText(parentLinkUrl); alert('Copied'); }} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Copy</button>
-            <button type="button" onClick={() => setModal(null)} className="ml-2 px-4 py-2 border rounded hover:bg-gray-50">Close</button>
+            <div className="mt-3">
+              <LinkShare
+                url={parentLinkUrl}
+                title="Parent portal link"
+                text="Use this parent portal link for schedule and renewal updates."
+                variant="compact"
+              />
+            </div>
+            <button type="button" onClick={() => setModal(null)} className="mt-3 px-4 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2">
+              <FiX />
+              Close
+            </button>
           </div>
         </div>
       )}

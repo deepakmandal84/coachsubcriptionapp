@@ -148,6 +148,7 @@ export default function Settings() {
                 url={scheduleMsg || (typeof window !== 'undefined' ? `${window.location.origin}/s/${coach.scheduleShareToken}` : '')}
                 title="Share schedule"
                 text="Join my class schedule"
+                variant="compact"
               />
             </div>
           )}
