@@ -1,0 +1,29 @@
+# Build / dependency outputs
+**/node_modules/
+**/dist/
+**/build/
+**/bin/
+**/obj/
+
+# .NET user/secrets files
+**/.vs/
+**/*.user
+**/*.suo
+**/*.userosscache
+**/*.sln.iml
+
+# Sensitive runtime configuration (contains secrets like JWT keys/passwords)
+api/appsettings*.json
+
+# Logs
+**/*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Cursor / other local tooling
+.cursor/
+
