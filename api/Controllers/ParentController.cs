@@ -130,6 +130,27 @@ public class ParentController : ControllerBase
         if (link.SubscriptionId.HasValue)
             sub = await _db.Subscriptions.AsNoTracking().Include(s => s.Package).FirstOrDefaultAsync(s => s.Id == link.SubscriptionId.Value, ct);
         if (student == null) return NotFound();
+
+        var existingPending = await _db.RenewalRequests
+            .AnyAsync(r =>
+                r.TenantId == link.TenantId &&
+                r.StudentId == link.StudentId &&
+                (r.SubscriptionId == link.SubscriptionId || (link.SubscriptionId == null && r.SubscriptionId == null)) &&
+                r.Status == RenewalRequestStatus.Pending, ct);
+        if (!existingPending)
+        {
+            _db.RenewalRequests.Add(new RenewalRequest
+            {
+                Id = Guid.NewGuid(),
+                TenantId = link.TenantId,
+                StudentId = link.StudentId,
+                SubscriptionId = link.SubscriptionId,
+                Status = RenewalRequestStatus.Pending,
+                RequestedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync(ct);
+        }
+
         var packageName = sub?.Package.Name ?? "current package";
         await _reminder.NotifyCoachRequestRenewalAsync(link.TenantId, student.Name, student.Email, student.Phone, packageName, ct);
         return Ok();

@@ -22,6 +22,8 @@ public class AppDbContext : DbContext
     public DbSet<SessionBooking> SessionBookings => Set<SessionBooking>();
     public DbSet<ParentPortalLink> ParentPortalLinks => Set<ParentPortalLink>();
     public DbSet<MessageLog> MessageLogs => Set<MessageLog>();
+    public DbSet<RenewalRequest> RenewalRequests => Set<RenewalRequest>();
+    public DbSet<RenewalTransaction> RenewalTransactions => Set<RenewalTransaction>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -105,6 +107,26 @@ public class AppDbContext : DbContext
             e.HasIndex(x => new { x.TenantId, x.SentAt });
         });
 
+        builder.Entity<RenewalRequest>(e =>
+        {
+            e.ToTable("renewalrequests");
+            e.HasKey(x => x.Id);
+            e.HasOne(x => x.Student).WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Subscription).WithMany().HasForeignKey(x => x.SubscriptionId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => new { x.TenantId, x.StudentId, x.Status });
+            e.HasIndex(x => new { x.TenantId, x.SubscriptionId, x.Status });
+        });
+
+        builder.Entity<RenewalTransaction>(e =>
+        {
+            e.ToTable("renewaltransactions");
+            e.HasKey(x => x.Id);
+            e.HasOne(x => x.Student).WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Subscription).WithMany().HasForeignKey(x => x.SubscriptionId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.RenewalRequest).WithMany().HasForeignKey(x => x.RenewalRequestId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.TenantId, x.StudentId, x.ConfirmedAt });
+        });
+
         // Global query filter: evaluated at query time; _tenant.TenantId is per-request (scoped).
         builder.Entity<Student>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
         builder.Entity<Package>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
@@ -115,5 +137,7 @@ public class AppDbContext : DbContext
         builder.Entity<ParentPortalLink>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
         builder.Entity<MessageLog>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
         builder.Entity<SessionBooking>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
+        builder.Entity<RenewalRequest>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
+        builder.Entity<RenewalTransaction>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
     }
 }

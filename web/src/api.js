@@ -79,6 +79,8 @@ export const subscriptionsApi = {
   update: (id, body) => api(`/subscriptions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   recordPayment: (id, body) => api(`/subscriptions/${id}/payments`, { method: 'POST', body: JSON.stringify(body) }),
   sendReminder: (id, channel) => api(`/subscriptions/${id}/send-reminder?${channel ? `channel=${channel}` : ''}`, { method: 'POST' }),
+  confirmRenewal: (id) => api(`/subscriptions/${id}/confirm-renewal`, { method: 'POST' }),
+  renewalTransactions: (id) => api(`/subscriptions/${id}/renewal-transactions`),
   getParentLink: (studentId, subscriptionId, expiryDays) =>
     api(`/subscriptions/parent-link?studentId=${studentId}${subscriptionId ? `&subscriptionId=${subscriptionId}` : ''}${expiryDays ? `&expiryDays=${expiryDays}` : ''}`),
   createParentLink: (subscriptionId, body) => api(`/subscriptions/${subscriptionId}/parent-link`, { method: 'POST', body: JSON.stringify(body) }),

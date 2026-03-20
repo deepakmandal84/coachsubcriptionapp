@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { subscriptionsApi, studentsApi, packagesApi, messageLogsApi } from '../api'
 import { FiBell, FiClock, FiCreditCard, FiLink2, FiPlus, FiX } from 'react-icons/fi'
+import { FaHistory } from 'react-icons/fa'
 import LinkShare from '../components/LinkShare'
 
 const REMINDER_TEMPLATES = 'PaymentDue,PackageExpiring,RequestRenewal'
@@ -18,6 +19,7 @@ export default function Subscriptions() {
   const [form, setForm] = useState({ studentId: '', packageId: '', startDate: new Date().toISOString().slice(0, 10), paymentStatus: 'Due', paymentMethod: 'Cash' })
   const [paymentForm, setPaymentForm] = useState({ amount: 0, method: 'Cash', notes: '' })
   const [parentLinkUrl, setParentLinkUrl] = useState('')
+  const [renewalTx, setRenewalTx] = useState([])
 
   function load() {
     subscriptionsApi.list().then(setList).catch(e => setErr(e instanceof Error ? e.message : 'Failed'))
@@ -87,6 +89,35 @@ export default function Subscriptions() {
       setSelected(sub)
       setModal('link')
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+  }
+
+  function openConfirmRenewal(sub) {
+    setSelected(sub)
+    setModal('confirmRenewal')
+  }
+
+  async function confirmRenewal() {
+    if (!selected) return
+    try {
+      await subscriptionsApi.confirmRenewal(selected.id)
+      setSuccessMsg(`Renewal confirmed for ${selected.studentName}.`)
+      setModal(null)
+      load()
+      setTimeout(() => setSuccessMsg(''), 2500)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Failed')
+    }
+  }
+
+  async function openRenewalHistory(sub) {
+    setSelected(sub)
+    try {
+      const rows = await subscriptionsApi.renewalTransactions(sub.id)
+      setRenewalTx(rows || [])
+      setModal('renewalHistory')
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Failed')
+    }
   }
 
   return (
@@ -163,6 +194,15 @@ export default function Subscriptions() {
                     <td className="p-3">
                       <button onClick={() => sendReminder(s)} className="text-blue-600 text-sm mr-3 hover:underline inline-flex items-center gap-1"><FiBell />Remind</button>
                       <button onClick={() => getParentLink(s)} className="text-blue-600 text-sm hover:underline inline-flex items-center gap-1"><FiLink2 />Parent link</button>
+                      <button
+                        onClick={() => openConfirmRenewal(s)}
+                        className={`ml-3 text-sm inline-flex items-center gap-1 ${s.hasPendingRenewal ? 'text-amber-600 hover:underline font-medium' : 'text-gray-400'}`}
+                        title={s.hasPendingRenewal ? 'Pending renewal request' : 'No pending renewal request'}
+                      >
+                        <FiBell />
+                        Renewed?
+                      </button>
+                      <button onClick={() => openRenewalHistory(s)} className="ml-3 text-indigo-600 text-sm hover:underline inline-flex items-center gap-1"><FaHistory />History</button>
                     </td>
                   </tr>
                 ))}
@@ -208,6 +248,17 @@ export default function Subscriptions() {
                   <button onClick={() => getParentLink(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm inline-flex items-center justify-center gap-1">
                     <FiLink2 />
                     Parent link
+                  </button>
+                  <button
+                    onClick={() => openConfirmRenewal(s)}
+                    className={`flex-1 min-w-[140px] px-3 py-2 rounded-xl border text-sm inline-flex items-center justify-center gap-1 ${s.hasPendingRenewal ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-gray-200 text-gray-500 bg-gray-50'}`}
+                  >
+                    <FiBell />
+                    Renewed?
+                  </button>
+                  <button onClick={() => openRenewalHistory(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-indigo-100 text-indigo-700 bg-indigo-50 text-sm inline-flex items-center justify-center gap-1">
+                    <FaHistory />
+                    History
                   </button>
                 </div>
               </div>
@@ -375,6 +426,62 @@ export default function Subscriptions() {
                 text="Use this parent portal link for schedule and renewal updates."
                 variant="compact"
               />
+            </div>
+            <button type="button" onClick={() => setModal(null)} className="mt-3 px-4 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2">
+              <FiX />
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {modal === 'confirmRenewal' && selected && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-2">Confirm renewal</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Confirm user <span className="font-medium">{selected.studentName}</span> has renewed?
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={confirmRenewal} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                Yes, renewed
+              </button>
+              <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded hover:bg-gray-50">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modal === 'renewalHistory' && selected && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-lg p-6 max-w-xl w-full shadow-xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-2">Renewal transactions</h2>
+            <p className="text-sm text-gray-500 mb-3">{selected.studentName}</p>
+            <div className="max-h-80 overflow-auto border rounded">
+              {renewalTx.length === 0 ? (
+                <div className="p-4 text-sm text-gray-500">No renewal transactions yet.</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left p-2">Requested</th>
+                      <th className="text-left p-2">Confirmed</th>
+                      <th className="text-left p-2">Package</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {renewalTx.map(r => (
+                      <tr key={r.id} className="border-b last:border-0">
+                        <td className="p-2">{new Date(r.requestedAt).toLocaleString()}</td>
+                        <td className="p-2">{new Date(r.confirmedAt).toLocaleString()}</td>
+                        <td className="p-2">{r.packageName ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
             <button type="button" onClick={() => setModal(null)} className="mt-3 px-4 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2">
               <FiX />

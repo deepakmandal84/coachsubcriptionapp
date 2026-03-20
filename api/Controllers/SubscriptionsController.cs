@@ -39,7 +39,21 @@ public class SubscriptionsController : ControllerBase
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<SubscriptionStatus>(status, true, out var st))
             q = q.Where(x => x.Status == st);
         var list = await q.OrderByDescending(x => x.CreatedAt)
-            .Select(x => new SubscriptionListDto(x.Id, x.StudentId, x.Student.Name, x.PackageId, x.Package.Name, x.StartDate, x.ExpiryDate, x.RemainingSessions, x.Status.ToString(), x.PaymentStatus.ToString(), x.PaymentMethod.ToString(), x.CreatedAt))
+            .Select(x => new SubscriptionListDto(
+                x.Id,
+                x.StudentId,
+                x.Student.Name,
+                x.PackageId,
+                x.Package.Name,
+                x.StartDate,
+                x.ExpiryDate,
+                x.RemainingSessions,
+                x.Status.ToString(),
+                x.PaymentStatus.ToString(),
+                x.PaymentMethod.ToString(),
+                x.CreatedAt,
+                _db.RenewalRequests.Any(r => r.StudentId == x.StudentId && (r.SubscriptionId == x.Id || r.SubscriptionId == null) && r.Status == RenewalRequestStatus.Pending)
+            ))
             .ToListAsync(ct);
         return Ok(list);
     }
@@ -163,6 +177,88 @@ public class SubscriptionsController : ControllerBase
         var (_, token) = await CreateLinkAsync(_tenant.TenantId.Value, studentId, subscriptionId, expiryDays, ct);
         if (token == null) return BadRequest("Could not create link.");
         return Ok(new ParentLinkResult($"{GetBaseUrl()}/p/{token}"));
+    }
+
+    [HttpPost("{id:guid}/confirm-renewal")]
+    public async Task<ActionResult<RenewalTransactionDto>> ConfirmRenewal(Guid id, CancellationToken ct)
+    {
+        if (_tenant.TenantId == null) return Forbid();
+
+        var sub = await _db.Subscriptions
+            .Include(s => s.Student)
+            .Include(s => s.Package)
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (sub == null) return NotFound("Subscription not found.");
+
+        var request = await _db.RenewalRequests
+            .Where(r =>
+                r.StudentId == sub.StudentId &&
+                (r.SubscriptionId == sub.Id || r.SubscriptionId == null) &&
+                r.Status == RenewalRequestStatus.Pending)
+            .OrderByDescending(r => r.RequestedAt)
+            .FirstOrDefaultAsync(ct);
+
+        if (request == null)
+            return BadRequest("No pending renewal request for this user.");
+
+        request.Status = RenewalRequestStatus.Confirmed;
+        request.SubscriptionId ??= sub.Id;
+        request.ConfirmedAt = DateTime.UtcNow;
+
+        var tx = new RenewalTransaction
+        {
+            Id = Guid.NewGuid(),
+            TenantId = sub.TenantId,
+            StudentId = sub.StudentId,
+            SubscriptionId = sub.Id,
+            RenewalRequestId = request.Id,
+            RequestedAt = request.RequestedAt,
+            ConfirmedAt = request.ConfirmedAt.Value
+        };
+        _db.RenewalTransactions.Add(tx);
+
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new RenewalTransactionDto(
+            tx.Id,
+            tx.StudentId,
+            sub.Student.Name,
+            tx.SubscriptionId,
+            sub.Package.Name,
+            tx.RequestedAt,
+            tx.ConfirmedAt
+        ));
+    }
+
+    [HttpGet("{id:guid}/renewal-transactions")]
+    public async Task<ActionResult<List<RenewalTransactionDto>>> RenewalTransactions(Guid id, CancellationToken ct)
+    {
+        if (_tenant.TenantId == null) return Forbid();
+
+        var sub = await _db.Subscriptions
+            .AsNoTracking()
+            .Include(s => s.Student)
+            .Include(s => s.Package)
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (sub == null) return NotFound("Subscription not found.");
+
+        var rows = await _db.RenewalTransactions
+            .AsNoTracking()
+            .Where(x => x.StudentId == sub.StudentId)
+            .Include(x => x.Subscription).ThenInclude(s => s!.Package)
+            .OrderByDescending(x => x.ConfirmedAt)
+            .Select(x => new RenewalTransactionDto(
+                x.Id,
+                x.StudentId,
+                sub.Student.Name,
+                x.SubscriptionId,
+                x.Subscription != null ? x.Subscription.Package.Name : null,
+                x.RequestedAt,
+                x.ConfirmedAt
+            ))
+            .ToListAsync(ct);
+
+        return Ok(rows);
     }
 
     private async Task<(ParentPortalLink link, string? token)> CreateLinkAsync(Guid tenantId, Guid studentId, Guid? subscriptionId, int expiryDays, CancellationToken ct)
