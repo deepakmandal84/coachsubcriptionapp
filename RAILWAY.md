@@ -81,6 +81,20 @@ docker run --rm -p 8080:8080 -e PORT=8080 ^
 
 Open `http://localhost:8080`.
 
+## Troubleshooting: `Name or service not known` (PostgreSQL)
+
+That error means the **hostname in your connection string does not resolve** (DNS). Common causes on Railway:
+
+1. **Variables not attached to the app service** — Open your **web/API service** → **Variables**. You must **reference** Postgres (`DATABASE_URL` or `PGHOST`, etc.). If `PGHOST` / `DATABASE_URL` is empty or a placeholder, DNS will fail.
+
+2. **Wrong or literal variable text** — If you pasted something like `${{Postgres.PGHOST}}` by hand instead of using **Variable reference**, Railway may not substitute it. Use **Add reference** → pick the Postgres service → pick the variable.
+
+3. **Private URL outside Railway** — URLs with hosts like `*.railway.internal` only resolve **inside** Railway’s network. If you run the API **locally** or in Docker on your PC with a copied `DATABASE_URL`, use **`DATABASE_PUBLIC_URL`** (or the **public** connection string from the Postgres plugin) instead, or only test DB from a deploy on Railway.
+
+4. **Fix** — In the Postgres service on Railway, open **Variables** / **Connect** and copy the **public** URL if needed. On your app service, set **`DATABASE_PUBLIC_URL`** (referenced from Postgres) **or** ensure **`DATABASE_URL`** is the reference Railway generates (not manually mistyped). The app reads `DATABASE_URL`, `DATABASE_PUBLIC_URL`, and `DATABASE_PRIVATE_URL` in that order (first non-empty wins).
+
+After deploy, check logs for: `Database connection host (...): hostname:5432` — if the host looks wrong or empty, fix variables.
+
 ## Free tier / credits
 
 Railway’s pricing and free trial change over time; check [Railway pricing](https://railway.app/pricing). A single small service + Postgres is usually enough for this stack; sleep/usage limits may apply on trial plans.

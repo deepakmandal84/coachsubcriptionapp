@@ -211,13 +211,21 @@ file static class RailwayConfig
     {
         var cs = config.GetConnectionString("DefaultConnection");
         if (!string.IsNullOrEmpty(cs))
+        {
+            TryLogDbHost("ConnectionStrings:DefaultConnection", cs);
             return cs;
+        }
 
-        foreach (var envName in new[] { "DATABASE_URL", "DATABASE_PRIVATE_URL" })
+        // Railway: private URL resolves only inside Railway's network; public URL works from anywhere.
+        foreach (var envName in new[] { "DATABASE_URL", "DATABASE_PRIVATE_URL", "DATABASE_PUBLIC_URL" })
         {
             var url = Environment.GetEnvironmentVariable(envName);
             if (!string.IsNullOrEmpty(url))
-                return DatabaseUrlToNpgsql(url);
+            {
+                var parsed = DatabaseUrlToNpgsql(url);
+                TryLogDbHost(envName, parsed);
+                return parsed;
+            }
         }
 
         var host = Environment.GetEnvironmentVariable("PGHOST");
@@ -231,7 +239,7 @@ file static class RailwayConfig
         var password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
         if (!int.TryParse(portStr, out var port))
             port = 5432;
-        return new NpgsqlConnectionStringBuilder
+        var fromPg = new NpgsqlConnectionStringBuilder
         {
             Host = host,
             Port = port,
@@ -240,6 +248,22 @@ file static class RailwayConfig
             Database = database,
             SslMode = SslMode.Require
         }.ConnectionString;
+        TryLogDbHost("PG*", fromPg);
+        return fromPg;
+    }
+
+    static void TryLogDbHost(string source, string connectionString)
+    {
+        try
+        {
+            var b = new NpgsqlConnectionStringBuilder(connectionString);
+            if (!string.IsNullOrEmpty(b.Host))
+                Console.WriteLine($"Database connection host ({source}): {b.Host}:{b.Port} db={b.Database}");
+        }
+        catch
+        {
+            /* ignore logging errors */
+        }
     }
 
     /// <summary>Maps postgres:// or postgresql:// URL to an Npgsql connection string (SSL required for typical cloud Postgres).</summary>
@@ -253,6 +277,9 @@ file static class RailwayConfig
         if (string.IsNullOrEmpty(database))
             database = "postgres";
         var port = uri.Port > 0 ? uri.Port : 5432;
+        if (string.IsNullOrWhiteSpace(uri.Host))
+            throw new InvalidOperationException(
+                "DATABASE_URL has no host. Check Railway variables: use Reference from Postgres, or set DATABASE_PUBLIC_URL / a full ConnectionStrings__DefaultConnection with a real hostname.");
         var builder = new NpgsqlConnectionStringBuilder
         {
             Host = uri.Host,
