@@ -15,6 +15,7 @@ public class Session
     public DateTime? UpdatedAt { get; set; }
 
     public Coach Coach { get; set; } = null!;
+    public ICollection<SessionCoach> SessionCoaches { get; set; } = new List<SessionCoach>();
     public ICollection<Attendance> Attendances { get; set; } = new List<Attendance>();
     public ICollection<SessionBooking> Bookings { get; set; } = new List<SessionBooking>();
 }

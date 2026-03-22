@@ -1,28 +1,72 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { sessionsApi } from '../api'
+import { sessionsApi, coachApi } from '../api'
+import { useAuth } from '../AuthContext'
 import { FiCalendar, FiCheckCircle, FiClock, FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi'
 
 export default function Sessions() {
+  const { coach } = useAuth()
+  const isStaffCoach = coach?.role === 'Coach' && !!coach?.clubTenantId
+  const isClubOwner = coach?.role === 'Coach' && !coach?.clubTenantId
+  const canManageSessions = coach?.role === 'Coach' && (coach?.clubTenantId == null || coach?.canCreateSessions === true)
+  const [filterCoachId, setFilterCoachId] = useState('')
+  const staffFilterDefaultDone = useRef(false)
   const [list, setList] = useState([])
+  const [team, setTeam] = useState([])
   const [err, setErr] = useState('')
   const [activeTab, setActiveTab] = useState('upcoming')
   const [modal, setModal] = useState(null)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), startTime: '09:00', type: 'Group', title: '', location: '' })
+  const [form, setForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    startTime: '09:00',
+    type: 'Group',
+    title: '',
+    location: '',
+    coachIds: [],
+  })
 
   function load() {
     const now = new Date()
-    // Include a bit of past data so completed sessions show up in History.
     const from = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString().slice(0, 10)
     const to = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString().slice(0, 10)
-    sessionsApi.list({ from, to }).then(setList).catch(e => setErr(e instanceof Error ? e.message : 'Failed'))
+    const params = { from, to }
+    if (filterCoachId) params.assignedCoachId = filterCoachId
+    sessionsApi.list(params).then(setList).catch(e => setErr(e instanceof Error ? e.message : 'Failed'))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (!coach?.id) return
+    if (isStaffCoach && team.length === 0) return
+    if (isStaffCoach && !staffFilterDefaultDone.current && filterCoachId === '') {
+      staffFilterDefaultDone.current = true
+      setFilterCoachId(String(coach.id))
+      return
+    }
+    load()
+  }, [filterCoachId, isStaffCoach, coach?.id, team.length])
+
+  useEffect(() => {
+    if (!canManageSessions) return
+    coachApi.team().then(setTeam).catch(() => setTeam([]))
+  }, [canManageSessions])
+
+  function formatRowTime(s) {
+    const t = s.startTime
+    if (typeof t === 'string') return t
+    return `${String(Math.floor(t / 3600)).padStart(2, '0')}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}`
+  }
 
   function openCreate() {
-    setForm({ date: new Date().toISOString().slice(0, 10), startTime: '09:00', type: 'Group', title: '', location: '' })
+    const ownerId = coach?.id ? String(coach.id) : ''
+    setForm({
+      date: new Date().toISOString().slice(0, 10),
+      startTime: '09:00',
+      type: 'Group',
+      title: '',
+      location: '',
+      coachIds: ownerId ? [ownerId] : [],
+    })
     setEditing(null)
     setModal('create')
   }
@@ -30,14 +74,36 @@ export default function Sessions() {
   function openEdit(s) {
     const d = new Date(s.date)
     const t = s.startTime
-    const time = typeof t === 'string' ? t : `${String(Math.floor(t / 3600)).padStart(2, '0')}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}`
-    setForm({ date: d.toISOString().slice(0, 10), startTime: time, type: s.type, title: s.title, location: s.location ?? '' })
+    const time = typeof t === 'string' ? (t.length >= 5 ? t.slice(0, 5) : t) : formatRowTime(s)
+    const ids = (s.assignedCoachIds || []).map(String)
+    setForm({
+      date: d.toISOString().slice(0, 10),
+      startTime: time,
+      type: s.type,
+      title: s.title,
+      location: s.location ?? '',
+      coachIds: ids.length ? ids : (coach?.id ? [String(coach.id)] : []),
+    })
     setEditing(s)
     setModal('edit')
   }
 
+  function toggleCoachId(id) {
+    const sid = String(id)
+    setForm(f => {
+      const set = new Set((f.coachIds || []).map(String))
+      if (set.has(sid)) set.delete(sid)
+      else set.add(sid)
+      return { ...f, coachIds: [...set] }
+    })
+  }
+
   async function handleCreate(e) {
     e.preventDefault()
+    if (canManageSessions && (!form.coachIds || form.coachIds.length === 0)) {
+      setErr('Select at least one coach for this session.')
+      return
+    }
     try {
       await sessionsApi.create({
         date: form.date,
@@ -45,8 +111,10 @@ export default function Sessions() {
         type: form.type,
         title: form.title,
         location: form.location || undefined,
+        coachIds: canManageSessions ? form.coachIds : undefined,
       })
       setModal(null)
+      setErr('')
       load()
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
   }
@@ -54,6 +122,10 @@ export default function Sessions() {
   async function handleUpdate(e) {
     e.preventDefault()
     if (!editing) return
+    if (canManageSessions && (!form.coachIds || form.coachIds.length === 0)) {
+      setErr('Select at least one coach for this session.')
+      return
+    }
     try {
       await sessionsApi.update(editing.id, {
         date: form.date,
@@ -61,8 +133,10 @@ export default function Sessions() {
         type: form.type,
         title: form.title,
         location: form.location || undefined,
+        coachIds: canManageSessions ? form.coachIds : undefined,
       })
       setModal(null)
+      setErr('')
       load()
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
   }
@@ -80,6 +154,8 @@ export default function Sessions() {
   const shownSessions = activeTab === 'history' ? historySessions : upcomingSessions
   const shownEmptyMsg = activeTab === 'history' ? 'No completed sessions yet.' : 'No upcoming sessions in this range.'
 
+  const coachNames = s => (s.coachNames && s.coachNames.length ? s.coachNames.join(', ') : '—')
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -89,14 +165,37 @@ export default function Sessions() {
           </span>
           Sessions
         </h1>
-        {activeTab === 'upcoming' && (
+        {activeTab === 'upcoming' && canManageSessions && (
           <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-sm">New session</button>
         )}
       </div>
       {err && <p className="text-red-600 mb-2">{err}</p>}
+      {canManageSessions && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-4">
+          <label className="text-sm text-gray-700 flex items-center gap-2 flex-wrap">
+            <span className="font-medium whitespace-nowrap">Show sessions for</span>
+            <select
+              value={filterCoachId}
+              onChange={e => setFilterCoachId(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm bg-white min-w-[12rem]"
+            >
+              <option value="">All coaches</option>
+              {team.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </label>
+          <p className="text-sm text-gray-500">
+            {isClubOwner
+              ? 'Filter the schedule by coach, or All to see every session.'
+              : 'Defaults to you; choose All coaches or another coach to see their sessions.'}
+          </p>
+        </div>
+      )}
 
       <div className="flex gap-1 border-b border-gray-200 mb-4">
         <button
+          type="button"
           onClick={() => setActiveTab('upcoming')}
           className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'upcoming' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
         >
@@ -104,6 +203,7 @@ export default function Sessions() {
           Upcoming
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('history')}
           className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'history' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
         >
@@ -121,6 +221,7 @@ export default function Sessions() {
                 <th className="text-left p-3">Time</th>
                 <th className="text-left p-3">Type</th>
                 <th className="text-left p-3">Title</th>
+                <th className="text-left p-3">Coaches</th>
                 <th className="text-left p-3">Location</th>
                 <th className="text-left p-3 w-24">Booked</th>
                 <th className="p-3"></th>
@@ -130,9 +231,10 @@ export default function Sessions() {
               {shownSessions.map(s => (
                 <tr key={s.id} className="border-b last:border-0">
                   <td className="p-3">{new Date(s.date).toLocaleDateString()}</td>
-                  <td className="p-3">{typeof s.startTime === 'string' ? s.startTime : `${String(Math.floor(s.startTime / 3600)).padStart(2, '0')}:${String(Math.floor((s.startTime % 3600) / 60)).padStart(2, '0')}`}</td>
+                  <td className="p-3">{formatRowTime(s)}</td>
                   <td className="p-3">{s.type}</td>
                   <td className="p-3">{s.title}</td>
+                  <td className="p-3 text-sm text-gray-700 max-w-[10rem]">{coachNames(s)}</td>
                   <td className="p-3">{s.location ?? '–'}</td>
                   <td className="p-3">
                     <div className="inline-flex items-center gap-1 text-gray-700">
@@ -145,14 +247,18 @@ export default function Sessions() {
                   </td>
                   <td className="p-3">
                     <Link to={`/sessions/${s.id}/attendance`} className="inline-flex items-center gap-1 text-indigo-600 mr-3 hover:underline"><FiCheckCircle />Attendance</Link>
-                    <button onClick={() => openEdit(s)} className="inline-flex items-center gap-1 text-blue-600 mr-3 hover:underline"><FiEdit2 />Edit</button>
-                    <button onClick={() => handleDelete(s.id)} className="inline-flex items-center gap-1 text-red-600 hover:underline"><FiTrash2 />Delete</button>
+                    {canManageSessions && (
+                      <>
+                        <button type="button" onClick={() => openEdit(s)} className="inline-flex items-center gap-1 text-blue-600 mr-3 hover:underline"><FiEdit2 />Edit</button>
+                        <button type="button" onClick={() => handleDelete(s.id)} className="inline-flex items-center gap-1 text-red-600 hover:underline"><FiTrash2 />Delete</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
               {shownSessions.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-gray-500">
+                  <td colSpan={8} className="p-6 text-center text-gray-500">
                     {shownEmptyMsg}
                   </td>
                 </tr>
@@ -163,7 +269,7 @@ export default function Sessions() {
 
         <div className="md:hidden space-y-3">
           {shownSessions.map(s => {
-            const time = typeof s.startTime === 'string' ? s.startTime : `${String(Math.floor(s.startTime / 3600)).padStart(2, '0')}:${String(Math.floor((s.startTime % 3600) / 60)).padStart(2, '0')}`
+            const time = formatRowTime(s)
             return (
               <div key={s.id} className="bg-white rounded-2xl border p-4 shadow-sm border-blue-100">
                 <div className="font-semibold">{s.title}</div>
@@ -171,6 +277,7 @@ export default function Sessions() {
                   {new Date(s.date).toLocaleDateString()} at {time} · {s.type}
                   {s.location ? ` · ${s.location}` : ''}
                 </div>
+                <div className="text-xs text-gray-500 mt-1">Coaches: {coachNames(s)}</div>
                 <div className="flex items-center justify-between gap-3 mt-2">
                   <div className="text-sm text-gray-500 inline-flex items-center gap-1"><FiUsers />{s.bookingCount ?? 0} booked</div>
                   {activeTab === 'history' && (
@@ -181,11 +288,15 @@ export default function Sessions() {
                 </div>
                 <div className="flex gap-2 pt-3">
                   <Link to={`/sessions/${s.id}/attendance`} className="flex-1 px-3 py-2 rounded-xl border border-indigo-100 text-indigo-700 bg-indigo-50 text-center inline-flex items-center justify-center gap-1"><FiCheckCircle />Attendance</Link>
-                  <button onClick={() => openEdit(s)} className="flex-1 px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 inline-flex items-center justify-center gap-1"><FiEdit2 />Edit</button>
+                  {canManageSessions && (
+                    <button type="button" onClick={() => openEdit(s)} className="flex-1 px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 inline-flex items-center justify-center gap-1"><FiEdit2 />Edit</button>
+                  )}
                 </div>
-                <div className="pt-2">
-                  <button onClick={() => handleDelete(s.id)} className="w-full px-3 py-2 rounded-xl border border-red-100 text-red-700 bg-red-50 inline-flex items-center justify-center gap-1"><FiTrash2 />Delete</button>
-                </div>
+                {canManageSessions && (
+                  <div className="pt-2">
+                    <button type="button" onClick={() => handleDelete(s.id)} className="w-full px-3 py-2 rounded-xl border border-red-100 text-red-700 bg-red-50 inline-flex items-center justify-center gap-1"><FiTrash2 />Delete</button>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -200,7 +311,7 @@ export default function Sessions() {
 
       {modal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-lg p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <h2 className="text-lg font-semibold mb-4">{modal === 'create' ? 'New session' : 'Edit session'}</h2>
             <form onSubmit={modal === 'create' ? handleCreate : handleUpdate} className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
@@ -228,6 +339,26 @@ export default function Sessions() {
                 <label className="block text-sm font-medium text-gray-700">Location</label>
                 <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} className="w-full border rounded px-3 py-2" />
               </div>
+              {canManageSessions && team.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Coaches running this session *</label>
+                  <p className="text-xs text-gray-500 mb-2">Any selected coach can open attendance when the class runs.</p>
+                  <div className="border rounded-lg divide-y max-h-40 overflow-y-auto">
+                    {team.map(m => {
+                      const checked = (form.coachIds || []).map(String).includes(String(m.id))
+                      return (
+                        <label key={m.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                          <input type="checkbox" checked={checked} onChange={() => toggleCoachId(m.id)} />
+                          <span className="text-sm">
+                            <span className="font-medium">{m.name}</span>
+                            <span className="text-gray-500 ml-2">{m.email}</span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 pt-2">
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">{modal === 'create' ? 'Create' : 'Save'}</button>
                 <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>

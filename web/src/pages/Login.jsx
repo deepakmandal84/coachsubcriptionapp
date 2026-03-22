@@ -8,7 +8,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, refresh } = useAuth()
   const navigate = useNavigate()
 
   async function handleSubmit(e) {
@@ -17,7 +17,14 @@ export default function Login() {
     setLoading(true)
     try {
       const res = await auth.login(email, password)
-      login(res.accessToken, { id: res.id, email: res.email, name: res.name, role: res.role })
+      login(res.accessToken, {
+        id: res.id,
+        email: res.email,
+        name: res.name,
+        role: res.role,
+        clubTenantId: res.clubTenantId ?? null,
+      })
+      await refresh()
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')

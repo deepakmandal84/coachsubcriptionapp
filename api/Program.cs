@@ -20,31 +20,52 @@ using CoachSubscriptionApi.Services.Notifications;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Ensure coachsub exists, then apply migrations immediately (same connection, before Hangfire)
+var portEnv = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(portEnv))
+    builder.WebHost.UseUrls($"http://0.0.0.0:{portEnv}");
+
+// Railway / Render style DATABASE_URL when ConnectionStrings__DefaultConnection is not set
+var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+if (string.IsNullOrEmpty(builder.Configuration.GetConnectionString("DefaultConnection")) && !string.IsNullOrEmpty(databaseUrl))
+{
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["ConnectionStrings:DefaultConnection"] = RailwayConfig.DatabaseUrlToNpgsql(databaseUrl)
+    });
+}
+
+// Ensure database exists (local dev), then apply migrations immediately (same connection, before Hangfire)
 var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrEmpty(connStr))
     throw new InvalidOperationException("Connection string 'DefaultConnection' is not set.");
 
-var b = new NpgsqlConnectionStringBuilder(connStr);
-var dbName = b.Database ?? "coachsub";
-b.Database = "postgres";
+var skipAutoCreateDb = builder.Configuration.GetValue<bool>("Database:SkipAutoCreate");
+
 try
 {
-    await using (var conn = new NpgsqlConnection(b.ConnectionString))
+    if (!skipAutoCreateDb)
     {
-        await conn.OpenAsync();
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @name";
-        cmd.Parameters.AddWithValue("name", dbName);
-        var exists = await cmd.ExecuteScalarAsync();
-        if (exists == null || exists is DBNull)
+        var b = new NpgsqlConnectionStringBuilder(connStr);
+        var dbName = b.Database ?? "coachsub";
+        b.Database = "postgres";
+        await using (var conn = new NpgsqlConnection(b.ConnectionString))
         {
-            await using var createCmd = conn.CreateCommand();
-            createCmd.CommandText = $"CREATE DATABASE \"{dbName.Replace("\"", "\"\"")}\"";
-            await createCmd.ExecuteNonQueryAsync();
-            Console.WriteLine($"Database '{dbName}' created.");
+            await conn.OpenAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @name";
+            cmd.Parameters.AddWithValue("name", dbName);
+            var exists = await cmd.ExecuteScalarAsync();
+            if (exists == null || exists is DBNull)
+            {
+                await using var createCmd = conn.CreateCommand();
+                createCmd.CommandText = $"CREATE DATABASE \"{dbName.Replace("\"", "\"\"")}\"";
+                await createCmd.ExecuteNonQueryAsync();
+                Console.WriteLine($"Database '{dbName}' created.");
+            }
         }
     }
+    else
+        Console.WriteLine("Database:SkipAutoCreate=true — using managed database only (no CREATE DATABASE).");
 
     // Apply migrations and seed in the same scope so they use the same database connection
     var migrationServices = new ServiceCollection();
@@ -172,9 +193,38 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions { Authorization = new
 
 RecurringJob.AddOrUpdate<ReminderJob>("reminders-daily", j => j.RunAsync(CancellationToken.None), Cron.Daily);
 
+if (File.Exists(Path.Combine(app.Environment.WebRootPath, "index.html")))
+    app.MapFallbackToFile("index.html");
+
 app.Run();
 
 file sealed class HangfireAuthFilter : IDashboardAuthorizationFilter
 {
     public bool Authorize(DashboardContext context) => true;
+}
+
+file static class RailwayConfig
+{
+    /// <summary>Maps postgres:// or postgresql:// URL to an Npgsql connection string (SSL required for typical cloud Postgres).</summary>
+    public static string DatabaseUrlToNpgsql(string databaseUrl)
+    {
+        var uri = new Uri(databaseUrl);
+        var userInfo = uri.UserInfo.Split(':', 2);
+        var user = Uri.UnescapeDataString(userInfo[0]);
+        var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
+        var database = uri.AbsolutePath.TrimStart('/');
+        if (string.IsNullOrEmpty(database))
+            database = "postgres";
+        var port = uri.Port > 0 ? uri.Port : 5432;
+        var builder = new NpgsqlConnectionStringBuilder
+        {
+            Host = uri.Host,
+            Port = port,
+            Username = user,
+            Password = password,
+            Database = database,
+            SslMode = SslMode.Require
+        };
+        return builder.ConnectionString;
+    }
 }

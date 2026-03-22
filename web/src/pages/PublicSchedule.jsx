@@ -129,6 +129,9 @@ export default function PublicSchedule() {
                 {new Date(s.date).toLocaleDateString()} at {formatSessionTime(s)}
                 {s.location ? ` · ${s.location}` : ''} · {s.type}
               </div>
+              {s.coachNames?.length > 0 && (
+                <div className="text-xs text-gray-500">Coach{s.coachNames.length > 1 ? 'es' : ''}: {s.coachNames.join(', ')}</div>
+              )}
               <div className="text-sm text-gray-500">{s.bookingCount ?? 0} signed up</div>
               {bookingId === s.id ? (
                 <div className="space-y-2 pt-2 border-t">

@@ -1,0 +1,13 @@
+.git
+**/.git
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/.vs
+**/*.user
+api/_b
+api/_b2
+api/_buildout
+api/_buildout2
+api/_temp_build_verify

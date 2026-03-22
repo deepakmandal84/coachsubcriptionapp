@@ -22,7 +22,15 @@ export default function SessionAttendance() {
 
   useEffect(() => {
     if (!id) return
-    sessionsApi.get(id).then(setSession).catch(e => setErr(e instanceof Error ? e.message : 'Failed'))
+    setErr('')
+    sessionsApi
+      .get(id)
+      .then(setSession)
+      .catch(e => {
+        const msg = e instanceof Error ? e.message : ''
+        if (msg.includes('403')) setErr('You do not have access to this session.')
+        else setErr(msg || 'Failed to load session')
+      })
     studentsApi.list({ status: 'Active' }).then(setStudents).catch(() => {})
   }, [id])
 
@@ -72,7 +80,7 @@ export default function SessionAttendance() {
   }, [id, rosterKey])
 
   async function handleSave() {
-    if (!id) return
+    if (!id || !session?.canMarkAttendance) return
     setSaving(true)
     try {
       const resp = await sessionsApi.setAttendance(
@@ -101,9 +109,21 @@ export default function SessionAttendance() {
     setItems(prev => prev.map(i => (i.studentId === studentId ? { ...i, ...patch } : i)))
   }
 
-  if (!session) return <p>{err || 'Loading...'}</p>
+  if (!session) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-8">
+        <p className="text-gray-700">{err || 'Loading...'}</p>
+        {err && (
+          <button type="button" onClick={() => navigate('/sessions')} className="mt-4 text-blue-600 hover:underline">
+            ← Back to sessions
+          </button>
+        )}
+      </div>
+    )
+  }
 
   const timeStr = formatTime(session)
+  const canEdit = session.canMarkAttendance === true
 
   return (
     <div>
@@ -117,10 +137,20 @@ export default function SessionAttendance() {
             {new Date(session.date).toLocaleDateString()} at {timeStr} · {session.type}
           </p>
         </div>
-        <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !canEdit}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+        >
           Save
         </button>
       </div>
+      {!canEdit && (
+        <div className="mb-4 p-4 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-900">
+          View-only: only coaches assigned to this session (or the club owner) can mark attendance.
+        </div>
+      )}
       {(session.bookings || []).length > 0 && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm">
           <div className="font-medium text-blue-900 mb-1">Signed up</div>
@@ -153,7 +183,12 @@ export default function SessionAttendance() {
                   <td className="p-3">{i.studentName}</td>
                   <td className="p-3">{i.signedUp ? 'Yes' : '—'}</td>
                   <td className="p-3">
-                    <input type="checkbox" checked={i.present} onChange={e => setItem(i.studentId, { present: e.target.checked })} />
+                    <input
+                      type="checkbox"
+                      checked={i.present}
+                      disabled={!canEdit}
+                      onChange={e => setItem(i.studentId, { present: e.target.checked })}
+                    />
                   </td>
                   <td className="p-3">
                     <input
@@ -162,7 +197,7 @@ export default function SessionAttendance() {
                       value={i.sessionsConsumed}
                       onChange={e => setItem(i.studentId, { sessionsConsumed: Number(e.target.value) })}
                       className="w-16 border rounded px-2 py-1"
-                      disabled={!i.present}
+                      disabled={!canEdit || !i.present}
                     />
                   </td>
                   <td className="p-3 text-gray-700">{formatClassUsage(usageByStudent[i.studentId]) || '—'}</td>
@@ -183,7 +218,7 @@ export default function SessionAttendance() {
                   </div>
                 </div>
                 <label className="inline-flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={i.present} onChange={e => setItem(i.studentId, { present: e.target.checked })} />
+                  <input type="checkbox" checked={i.present} disabled={!canEdit} onChange={e => setItem(i.studentId, { present: e.target.checked })} />
                   Present
                 </label>
               </div>
@@ -195,7 +230,7 @@ export default function SessionAttendance() {
                   value={i.sessionsConsumed}
                   onChange={e => setItem(i.studentId, { sessionsConsumed: Number(e.target.value) })}
                   className="w-24 border rounded-lg px-3 py-2"
-                  disabled={!i.present}
+                  disabled={!canEdit || !i.present}
                 />
               </div>
               <div className="text-sm text-gray-700 mt-2">

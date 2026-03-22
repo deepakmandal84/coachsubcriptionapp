@@ -24,11 +24,56 @@ public class SessionsController : ControllerBase
         _tenant = tenant;
     }
 
+    private async Task<bool> CanTakeAttendanceForSessionAsync(Session session, CancellationToken ct)
+    {
+        if (_tenant.UserId == null || _tenant.TenantId == null) return false;
+        if (session.TenantId != _tenant.TenantId) return false;
+        if (_tenant.UserId == session.TenantId) return true;
+        return await _db.SessionCoaches.AsNoTracking()
+            .AnyAsync(sc => sc.SessionId == session.Id && sc.CoachId == _tenant.UserId.Value, ct);
+    }
+
+    private static List<Guid> NormalizeCoachIds(List<Guid>? coachIds, Guid tenantId)
+    {
+        if (coachIds is not { Count: > 0 })
+            return new List<Guid> { tenantId };
+        return coachIds.Distinct().ToList();
+    }
+
+    private async Task<bool> AreCoachIdsInClubAsync(Guid tenantId, List<Guid> ids, CancellationToken ct)
+    {
+        var distinct = ids.Distinct().ToList();
+        if (distinct.Count == 0) return false;
+        var count = await _db.Coaches.AsNoTracking()
+            .Where(c => distinct.Contains(c.Id))
+            .Where(c => (c.Id == tenantId && c.ClubTenantId == null) || c.ClubTenantId == tenantId)
+            .CountAsync(ct);
+        return count == distinct.Count;
+    }
+
+    private async Task ReplaceSessionCoachesAsync(Guid sessionId, List<Guid> coachIds, CancellationToken ct)
+    {
+        var existing = await _db.SessionCoaches.Where(sc => sc.SessionId == sessionId).ToListAsync(ct);
+        _db.SessionCoaches.RemoveRange(existing);
+        foreach (var cid in coachIds.Distinct())
+        {
+            _db.SessionCoaches.Add(new SessionCoach { SessionId = sessionId, CoachId = cid });
+        }
+    }
+
     [HttpGet]
-    public async Task<ActionResult<List<SessionListDto>>> List([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
+    public async Task<ActionResult<List<SessionListDto>>> List([FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] Guid? assignedCoachId, CancellationToken ct)
     {
         if (_tenant.TenantId == null) return Forbid();
+        var tid = _tenant.TenantId.Value;
         var q = _db.Sessions.AsNoTracking();
+        if (assignedCoachId.HasValue)
+        {
+            var coachOk = await _db.Coaches.AsNoTracking()
+                .AnyAsync(c => c.Id == assignedCoachId.Value && ((c.Id == tid && c.ClubTenantId == null) || c.ClubTenantId == tid), ct);
+            if (!coachOk) return BadRequest("Unknown coach for this club.");
+            q = q.Where(s => s.SessionCoaches.Any(sc => sc.CoachId == assignedCoachId.Value));
+        }
         if (from.HasValue)
         {
             var fromUtc = DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc);
@@ -51,7 +96,9 @@ public class SessionsController : ControllerBase
                     x.Location,
                     x.CreatedAt,
                     x.Bookings.Count,
-                    x.Attendances.Count
+                    x.Attendances.Count,
+                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.CoachId).ToList(),
+                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.Coach.Name).ToList()
                 ))
                 .ToListAsync(ct);
             return Ok(list);
@@ -59,7 +106,7 @@ public class SessionsController : ControllerBase
         catch (PostgresException ex) when (IsSchemaMismatch(ex))
         {
             var fallback = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
-                .Select(x => new SessionListDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, x.CreatedAt, 0, 0))
+                .Select(x => new SessionListDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, x.CreatedAt, 0, 0, new List<Guid>(), new List<string>()))
                 .ToListAsync(ct);
             return Ok(fallback);
         }
@@ -71,13 +118,16 @@ public class SessionsController : ControllerBase
         if (_tenant.TenantId == null) return Forbid();
         var x = await _db.Sessions
             .AsNoTracking()
+            .Include(s => s.SessionCoaches).ThenInclude(sc => sc.Coach)
             .Include(s => s.Attendances).ThenInclude(a => a.Student)
             .Include(s => s.Bookings).ThenInclude(b => b.Student)
             .FirstOrDefaultAsync(s => s.Id == id, ct);
         if (x == null) return NotFound();
+        var canMark = await CanTakeAttendanceForSessionAsync(x, ct);
         var bookings = x.Bookings.Select(b => new SessionBookingDto(b.Id, b.StudentId, b.Student.Name, PhoneLast4(b.Student.Phone))).ToList();
         var attendances = x.Attendances.Select(a => new AttendanceDto(a.Id, a.StudentId, a.Student.Name, a.Present, a.SessionsConsumed)).ToList();
-        return Ok(new SessionDetailDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, bookings, attendances, x.CreatedAt));
+        var assigned = x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => new AssignedCoachDto(sc.CoachId, sc.Coach.Name)).ToList();
+        return Ok(new SessionDetailDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, bookings, attendances, assigned, x.CreatedAt, canMark));
     }
 
     private static string? PhoneLast4(string? phone)
@@ -93,10 +143,13 @@ public class SessionsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<SessionDetailDto>> Create([FromBody] CreateSessionRequest request, CancellationToken ct)
     {
-        if (_tenant.TenantId == null) return Forbid();
+        if (!await ClubStaffPermissions.CanCreateSessionsAsync(_db, _tenant, ct)) return Forbid();
         if (!TimeSpan.TryParse(request.StartTime, out var startTime)) startTime = TimeSpan.Zero;
         if (!Enum.TryParse<SessionType>(request.Type, true, out var sessionType))
             return BadRequest("Invalid session type. Use Group or Private.");
+        var coachIds = NormalizeCoachIds(request.CoachIds, _tenant.TenantId!.Value);
+        if (!await AreCoachIdsInClubAsync(_tenant.TenantId!.Value, coachIds, ct))
+            return BadRequest("One or more coaches are not part of this club.");
         var session = new Session
         {
             Id = Guid.NewGuid(),
@@ -110,14 +163,23 @@ public class SessionsController : ControllerBase
         };
         _db.Sessions.Add(session);
         await _db.SaveChangesAsync(ct);
-        return CreatedAtAction(nameof(Get), new { id = session.Id }, new SessionDetailDto(session.Id, session.Date, session.StartTime, session.Type.ToString(), session.Title, session.Location, new List<SessionBookingDto>(), new List<AttendanceDto>(), session.CreatedAt));
+        await ReplaceSessionCoachesAsync(session.Id, coachIds, ct);
+        await _db.SaveChangesAsync(ct);
+        var assigned = await _db.SessionCoaches.AsNoTracking()
+            .Where(sc => sc.SessionId == session.Id)
+            .Select(sc => new AssignedCoachDto(sc.CoachId, sc.Coach.Name))
+            .OrderBy(a => a.Name)
+            .ToListAsync(ct);
+        var canMark = ClubStaffPermissions.IsClubOwner(_tenant) || coachIds.Contains(_tenant.UserId!.Value);
+        return CreatedAtAction(nameof(Get), new { id = session.Id }, new SessionDetailDto(session.Id, session.Date, session.StartTime, session.Type.ToString(), session.Title, session.Location, new List<SessionBookingDto>(), new List<AttendanceDto>(), assigned, session.CreatedAt, canMark));
     }
 
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<SessionDetailDto>> Update(Guid id, [FromBody] UpdateSessionRequest request, CancellationToken ct)
     {
-        if (_tenant.TenantId == null) return Forbid();
+        if (!await ClubStaffPermissions.CanCreateSessionsAsync(_db, _tenant, ct)) return Forbid();
         var x = await _db.Sessions
+            .Include(s => s.SessionCoaches).ThenInclude(sc => sc.Coach)
             .Include(s => s.Attendances).ThenInclude(a => a.Student)
             .Include(s => s.Bookings).ThenInclude(b => b.Student)
             .FirstOrDefaultAsync(s => s.Id == id, ct);
@@ -131,16 +193,29 @@ public class SessionsController : ControllerBase
         x.Title = request.Title;
         x.Location = request.Location;
         x.UpdatedAt = DateTime.UtcNow;
+        if (request.CoachIds != null)
+        {
+            var coachIds = NormalizeCoachIds(request.CoachIds, _tenant.TenantId!.Value);
+            if (!await AreCoachIdsInClubAsync(_tenant.TenantId!.Value, coachIds, ct))
+                return BadRequest("One or more coaches are not part of this club.");
+            await ReplaceSessionCoachesAsync(x.Id, coachIds, ct);
+        }
         await _db.SaveChangesAsync(ct);
         var bookings = x.Bookings.Select(b => new SessionBookingDto(b.Id, b.StudentId, b.Student.Name, PhoneLast4(b.Student.Phone))).ToList();
         var attendances = x.Attendances.Select(a => new AttendanceDto(a.Id, a.StudentId, a.Student.Name, a.Present, a.SessionsConsumed)).ToList();
-        return Ok(new SessionDetailDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, bookings, attendances, x.CreatedAt));
+        var assigned = await _db.SessionCoaches.AsNoTracking()
+            .Where(sc => sc.SessionId == x.Id)
+            .Select(sc => new AssignedCoachDto(sc.CoachId, sc.Coach.Name))
+            .OrderBy(a => a.Name)
+            .ToListAsync(ct);
+        var canMark = await CanTakeAttendanceForSessionAsync(x, ct);
+        return Ok(new SessionDetailDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, bookings, attendances, assigned, x.CreatedAt, canMark));
     }
 
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
-        if (_tenant.TenantId == null) return Forbid();
+        if (!await ClubStaffPermissions.CanCreateSessionsAsync(_db, _tenant, ct)) return Forbid();
         var x = await _db.Sessions.FirstOrDefaultAsync(s => s.Id == id, ct);
         if (x == null) return NotFound();
         _db.Sessions.Remove(x);
@@ -152,9 +227,12 @@ public class SessionsController : ControllerBase
     public async Task<ActionResult<List<AttendanceDto>>> GetAttendance(Guid id, CancellationToken ct)
     {
         if (_tenant.TenantId == null) return Forbid();
-        var session = await _db.Sessions.AsNoTracking().Include(s => s.Attendances).ThenInclude(a => a.Student).FirstOrDefaultAsync(s => s.Id == id, ct);
+        var session = await _db.Sessions.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
         if (session == null) return NotFound();
-        var list = session.Attendances.Select(a => new AttendanceDto(a.Id, a.StudentId, a.Student.Name, a.Present, a.SessionsConsumed)).ToList();
+        if (!await CanTakeAttendanceForSessionAsync(session, ct)) return Forbid();
+        var sessionWithAtt = await _db.Sessions.AsNoTracking().Include(s => s.Attendances).ThenInclude(a => a.Student).FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (sessionWithAtt == null) return NotFound();
+        var list = sessionWithAtt.Attendances.Select(a => new AttendanceDto(a.Id, a.StudentId, a.Student.Name, a.Present, a.SessionsConsumed)).ToList();
         return Ok(list);
     }
 
@@ -164,6 +242,7 @@ public class SessionsController : ControllerBase
         if (_tenant.TenantId == null) return Forbid();
         var session = await _db.Sessions.Include(s => s.Attendances).FirstOrDefaultAsync(s => s.Id == id, ct);
         if (session == null) return NotFound();
+        if (!await CanTakeAttendanceForSessionAsync(session, ct)) return Forbid();
         foreach (var item in request.Items)
         {
             var att = session.Attendances.FirstOrDefault(a => a.StudentId == item.StudentId);

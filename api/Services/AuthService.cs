@@ -52,8 +52,48 @@ public class AuthService : IAuthService
     public async Task<CoachDto?> GetCoachByIdAsync(Guid id, CancellationToken ct = default)
     {
         var c = await _db.Coaches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
-        return c == null ? null : new CoachDto(c.Id, c.Email, c.Name, c.AcademyName, c.AcademyType, c.LogoUrl, c.PrimaryColor, c.Role.ToString(), c.ScheduleShareToken);
+        return c == null ? null : ToCoachDto(c);
     }
+
+    public async Task<CoachDto?> CreateStaffCoachAsync(Guid clubTenantId, string email, string password, string name, bool canCreateSessions, bool canManageStudents, CancellationToken ct = default)
+    {
+        var owner = await _db.Coaches.AsNoTracking().FirstOrDefaultAsync(c => c.Id == clubTenantId && c.ClubTenantId == null, ct);
+        if (owner == null) return null;
+        var normalized = email.Trim().ToLowerInvariant();
+        if (await _db.Coaches.AnyAsync(c => c.Email == normalized, ct)) return null;
+        var coach = new Coach
+        {
+            Id = Guid.NewGuid(),
+            Email = normalized,
+            PasswordHash = HashPassword(password),
+            Name = name.Trim(),
+            AcademyName = owner.AcademyName,
+            AcademyType = owner.AcademyType,
+            LogoUrl = owner.LogoUrl,
+            PrimaryColor = owner.PrimaryColor,
+            Role = Role.Coach,
+            ClubTenantId = clubTenantId,
+            CanCreateSessions = canCreateSessions,
+            CanManageStudents = canManageStudents,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+        _db.Coaches.Add(coach);
+        await _db.SaveChangesAsync(ct);
+        return ToCoachDto(coach);
+    }
+
+    public static CoachDto ToCoachDto(Coach c)
+    {
+        var isOwner = c.ClubTenantId == null;
+        return new CoachDto(
+            c.Id, c.Email, c.Name, c.AcademyName, c.AcademyType, c.LogoUrl, c.PrimaryColor, c.Role.ToString(), c.ClubTenantId,
+            isOwner || c.CanCreateSessions,
+            isOwner || c.CanManageStudents,
+            c.ScheduleShareToken);
+    }
+
+    public string HashPasswordForCoach(string password) => HashPassword(password);
 
     private static string HashPassword(string password)
     {
@@ -78,15 +118,17 @@ public class AuthService : IAuthService
         var credentials = new SigningCredentials(
             new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(key)),
             SecurityAlgorithms.HmacSha256);
+        var tenantForJwt = coach.ClubTenantId ?? coach.Id;
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, coach.Id.ToString()),
             new Claim(ClaimTypes.Email, coach.Email),
             new Claim(ClaimTypes.Role, coach.Role.ToString()),
-            new Claim("sub", coach.Id.ToString())
+            new Claim("sub", coach.Id.ToString()),
+            new Claim("tid", tenantForJwt.ToString())
         };
         var token = new JwtSecurityToken(issuer, audience, claims, DateTime.UtcNow, DateTime.UtcNow.AddMinutes(expiresMinutes), credentials);
         var accessToken = new JwtSecurityTokenHandler().WriteToken(token);
-        return new AuthResult(accessToken, coach.Email, coach.Name, coach.Id, coach.Role.ToString(), expiresMinutes * 60);
+        return new AuthResult(accessToken, coach.Email, coach.Name, coach.Id, coach.Role.ToString(), expiresMinutes * 60, coach.ClubTenantId);
     }
 }

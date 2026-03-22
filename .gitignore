@@ -5,6 +5,14 @@
 **/bin/
 **/obj/
 
+# Accidental local publish / verify output trees (do not commit)
+api/_b/
+api/_b2/
+api/_buildout/
+api/_buildout2/
+api/_railway_verify*/
+api/_temp_build_verify/
+
 # .NET user/secrets files
 **/.vs/
 **/*.user

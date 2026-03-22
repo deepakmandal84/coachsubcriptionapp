@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<Attendance> Attendances => Set<Attendance>();
     public DbSet<SessionBooking> SessionBookings => Set<SessionBooking>();
+    public DbSet<SessionCoach> SessionCoaches => Set<SessionCoach>();
     public DbSet<ParentPortalLink> ParentPortalLinks => Set<ParentPortalLink>();
     public DbSet<MessageLog> MessageLogs => Set<MessageLog>();
     public DbSet<RenewalRequest> RenewalRequests => Set<RenewalRequest>();
@@ -33,6 +34,8 @@ public class AppDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.Email).IsUnique();
             e.HasIndex(x => x.ScheduleShareToken).IsUnique();
+            e.HasIndex(x => x.ClubTenantId);
+            e.HasOne(x => x.ClubOwner).WithMany().HasForeignKey(x => x.ClubTenantId).OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<Student>(e =>
@@ -71,6 +74,15 @@ public class AppDbContext : DbContext
             e.ToTable("sessions");
             e.HasKey(x => x.Id);
             e.HasOne(x => x.Coach).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<SessionCoach>(e =>
+        {
+            e.ToTable("sessioncoaches");
+            e.HasKey(x => new { x.SessionId, x.CoachId });
+            e.HasIndex(x => x.CoachId);
+            e.HasOne(x => x.Session).WithMany(s => s.SessionCoaches).HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Coach).WithMany().HasForeignKey(x => x.CoachId).OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<Attendance>(e =>
@@ -139,5 +151,6 @@ public class AppDbContext : DbContext
         builder.Entity<SessionBooking>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
         builder.Entity<RenewalRequest>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
         builder.Entity<RenewalTransaction>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
+        builder.Entity<SessionCoach>().HasQueryFilter(x => _tenant.TenantId == null || x.Session!.TenantId == _tenant.TenantId);
     }
 }

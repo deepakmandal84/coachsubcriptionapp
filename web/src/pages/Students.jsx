@@ -1,8 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
 import { studentsApi } from '../api'
+import { useAuth } from '../AuthContext'
 import { FiEdit2, FiPlus, FiSearch, FiTrash2, FiUser } from 'react-icons/fi'
 
 export default function Students() {
+  const { coach } = useAuth()
+  const canManageStudents = coach?.role === 'Coach' && (coach?.clubTenantId == null || coach?.canManageStudents === true)
   const [list, setList] = useState([])
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
@@ -104,8 +107,13 @@ export default function Students() {
           </span>
           Students
         </h1>
-        <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 inline-flex items-center gap-2 shadow-sm"><FiPlus />Add student</button>
+        {canManageStudents && (
+          <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 inline-flex items-center gap-2 shadow-sm"><FiPlus />Add student</button>
+        )}
       </div>
+      {!canManageStudents && coach?.role === 'Coach' && (
+        <p className="text-sm text-gray-600 mb-3">View only: your role can browse students but not add or edit them.</p>
+      )}
       {err && <p className="text-red-600 mb-2">{err}</p>}
       {success && <p className="text-green-600 bg-green-50 border border-green-200 rounded px-3 py-2 mb-2">{success}</p>}
       <div className="flex gap-2 mb-4">
@@ -142,8 +150,13 @@ export default function Students() {
                   <td className="p-3">{s.phone ?? '–'}</td>
                   <td className="p-3">{s.status}</td>
                   <td className="p-3">
-                    <button onClick={() => openEdit(s)} className="inline-flex items-center gap-1 text-blue-600 mr-3 hover:underline"><FiEdit2 />Edit</button>
-                    <button onClick={() => handleDelete(s.id)} className="inline-flex items-center gap-1 text-red-600 hover:underline"><FiTrash2 />Delete</button>
+                    {canManageStudents && (
+                      <>
+                        <button type="button" onClick={() => openEdit(s)} className="inline-flex items-center gap-1 text-blue-600 mr-3 hover:underline"><FiEdit2 />Edit</button>
+                        <button type="button" onClick={() => handleDelete(s.id)} className="inline-flex items-center gap-1 text-red-600 hover:underline"><FiTrash2 />Delete</button>
+                      </>
+                    )}
+                    {!canManageStudents && <span className="text-gray-400 text-sm">—</span>}
                   </td>
                 </tr>
               ))}
@@ -173,10 +186,12 @@ export default function Students() {
                   )}
                 </div>
               </div>
-              <div className="flex gap-2 pt-3">
-                <button onClick={() => openEdit(s)} className="flex-1 px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 inline-flex items-center justify-center gap-1"><FiEdit2 />Edit</button>
-                <button onClick={() => handleDelete(s.id)} className="flex-1 px-3 py-2 rounded-xl border border-red-100 text-red-700 bg-red-50 inline-flex items-center justify-center gap-1"><FiTrash2 />Delete</button>
-              </div>
+              {canManageStudents && (
+                <div className="flex gap-2 pt-3">
+                  <button type="button" onClick={() => openEdit(s)} className="flex-1 px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 inline-flex items-center justify-center gap-1"><FiEdit2 />Edit</button>
+                  <button type="button" onClick={() => handleDelete(s.id)} className="flex-1 px-3 py-2 rounded-xl border border-red-100 text-red-700 bg-red-50 inline-flex items-center justify-center gap-1"><FiTrash2 />Delete</button>
+                </div>
+              )}
             </div>
           ))}
         </div>

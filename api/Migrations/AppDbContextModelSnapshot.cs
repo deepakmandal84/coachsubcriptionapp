@@ -67,6 +67,15 @@ namespace CoachSubscriptionApi.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<Guid?>("ClubTenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("CanCreateSessions")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("CanManageStudents")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -311,6 +320,21 @@ namespace CoachSubscriptionApi.Migrations
                     b.ToTable("sessions");
                 });
 
+            modelBuilder.Entity("CoachSubscriptionApi.Entities.SessionCoach", b =>
+                {
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CoachId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("SessionId", "CoachId");
+
+                    b.HasIndex("CoachId");
+
+                    b.ToTable("sessioncoaches");
+                });
+
             modelBuilder.Entity("CoachSubscriptionApi.Entities.SessionBooking", b =>
                 {
                     b.Property<Guid>("Id")
@@ -468,6 +492,16 @@ namespace CoachSubscriptionApi.Migrations
                     b.Navigation("Coach");
                 });
 
+            modelBuilder.Entity("CoachSubscriptionApi.Entities.Coach", b =>
+                {
+                    b.HasOne("CoachSubscriptionApi.Entities.Coach", "ClubOwner")
+                        .WithMany()
+                        .HasForeignKey("ClubTenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ClubOwner");
+                });
+
             modelBuilder.Entity("CoachSubscriptionApi.Entities.ParentPortalLink", b =>
                 {
                     b.HasOne("CoachSubscriptionApi.Entities.Coach", "Coach")
@@ -514,6 +548,25 @@ namespace CoachSubscriptionApi.Migrations
                         .IsRequired();
 
                     b.Navigation("Coach");
+                });
+
+            modelBuilder.Entity("CoachSubscriptionApi.Entities.SessionCoach", b =>
+                {
+                    b.HasOne("CoachSubscriptionApi.Entities.Coach", "Coach")
+                        .WithMany()
+                        .HasForeignKey("CoachId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CoachSubscriptionApi.Entities.Session", "Session")
+                        .WithMany("SessionCoaches")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Coach");
+
+                    b.Navigation("Session");
                 });
 
             modelBuilder.Entity("CoachSubscriptionApi.Entities.SessionBooking", b =>
@@ -578,6 +631,8 @@ namespace CoachSubscriptionApi.Migrations
                     b.Navigation("Attendances");
 
                     b.Navigation("Bookings");
+
+                    b.Navigation("SessionCoaches");
                 });
 
             modelBuilder.Entity("CoachSubscriptionApi.Entities.Student", b =>

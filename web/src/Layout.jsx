@@ -8,17 +8,19 @@ export default function Layout() {
   const primary = coach?.primaryColor || '#2563eb'
   const [menuOpen, setMenuOpen] = useState(false)
 
+  const isStaffCoach = coach?.role === 'Coach' && !!coach?.clubTenantId
+
   const navLinks = useMemo(() => {
     return [
       coach?.role === 'Admin' ? { to: '/admin', label: 'Super Admin', show: true } : { show: false },
-      { to: '/', label: 'Dashboard', show: true },
+      { to: '/', label: 'Dashboard', show: !isStaffCoach },
       { to: '/students', label: 'Students', show: true },
-      { to: '/packages', label: 'Packages', show: true },
-      { to: '/subscriptions', label: 'Subscriptions', show: true },
+      { to: '/packages', label: 'Packages', show: !isStaffCoach },
+      { to: '/subscriptions', label: 'Subscriptions', show: !isStaffCoach },
       { to: '/sessions', label: 'Sessions', show: true },
-      { to: '/settings', label: 'Settings', show: true },
+      { to: '/settings', label: 'Settings', show: !isStaffCoach },
     ].filter(x => x.show !== false)
-  }, [coach?.role])
+  }, [coach?.role, isStaffCoach])
 
   function linkClass({ isActive }) {
     return `px-3 py-2 rounded ${isActive ? 'bg-gray-100 font-medium' : 'hover:bg-gray-50'}`

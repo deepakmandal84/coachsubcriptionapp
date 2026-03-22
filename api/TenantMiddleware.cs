@@ -18,8 +18,15 @@ public static class TenantMiddleware
                 if (idClaim != null && Guid.TryParse(idClaim.Value, out var userId))
                 {
                     var isAdmin = string.Equals(roleClaim?.Value, "Admin", StringComparison.OrdinalIgnoreCase);
-                    // For Coach, tenant = userId. For Admin, no tenant when managing platform.
-                    var tenantId = isAdmin ? (Guid?)null : userId;
+                    Guid? tenantId = null;
+                    if (!isAdmin)
+                    {
+                        var tidClaim = context.User.FindFirst("tid");
+                        if (tidClaim != null && Guid.TryParse(tidClaim.Value, out var tid))
+                            tenantId = tid;
+                        else
+                            tenantId = userId;
+                    }
                     tenant.Set(userId, tenantId, emailClaim?.Value ?? "", isAdmin);
                 }
             }

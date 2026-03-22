@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using CoachSubscriptionApi.Data;
 using CoachSubscriptionApi.DTOs;
 using CoachSubscriptionApi.Entities;
+using CoachSubscriptionApi.Helpers;
 using CoachSubscriptionApi.Services;
 
 namespace CoachSubscriptionApi.Controllers;
@@ -53,6 +54,7 @@ public class StudentsController : ControllerBase
     public async Task<ActionResult<StudentDetailDto>> Create([FromBody] CreateStudentRequest request, CancellationToken ct)
     {
         if (_tenant.TenantId == null) return Forbid();
+        if (!await ClubStaffPermissions.CanManageStudentsAsync(_db, _tenant, ct)) return Forbid();
         var student = new Student
         {
             Id = Guid.NewGuid(),
@@ -75,6 +77,7 @@ public class StudentsController : ControllerBase
     public async Task<ActionResult<StudentDetailDto>> Update(Guid id, [FromBody] UpdateStudentRequest request, CancellationToken ct)
     {
         if (_tenant.TenantId == null) return Forbid();
+        if (!await ClubStaffPermissions.CanManageStudentsAsync(_db, _tenant, ct)) return Forbid();
         var x = await _db.Students.FirstOrDefaultAsync(s => s.Id == id, ct);
         if (x == null) return NotFound();
         x.Name = request.Name;
@@ -108,6 +111,7 @@ public class StudentsController : ControllerBase
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
         if (_tenant.TenantId == null) return Forbid();
+        if (!await ClubStaffPermissions.CanManageStudentsAsync(_db, _tenant, ct)) return Forbid();
         var x = await _db.Students.FirstOrDefaultAsync(s => s.Id == id, ct);
         if (x == null) return NotFound();
         _db.Students.Remove(x);

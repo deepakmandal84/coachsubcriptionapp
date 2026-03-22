@@ -50,14 +50,16 @@ public class ScheduleController : ControllerBase
                     x.Location,
                     x.CreatedAt,
                     x.Bookings.Count,
-                    x.Attendances.Count
+                    x.Attendances.Count,
+                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.CoachId).ToList(),
+                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.Coach.Name).ToList()
                 ))
                 .ToListAsync(ct);
         }
         catch (PostgresException ex) when (ex.SqlState is "42P01" or "42703")
         {
             sessions = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
-                .Select(x => new SessionListDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, x.CreatedAt, 0, 0))
+                .Select(x => new SessionListDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, x.CreatedAt, 0, 0, new List<Guid>(), new List<string>()))
                 .ToListAsync(ct);
         }
 

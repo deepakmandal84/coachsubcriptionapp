@@ -1,5 +1,13 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './AuthContext'
+
+function HomeIndex() {
+  const { coach } = useAuth()
+  if (coach?.role === 'Coach' && coach?.clubTenantId) {
+    return <Navigate to="/sessions" replace />
+  }
+  return <Dashboard />
+}
 import Layout from './Layout'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -31,7 +39,7 @@ export default function App() {
         <Route path="/p/:token" element={<ParentPortal />} />
         <Route path="/s/:token" element={<PublicSchedule />} />
         <Route path="/" element={<Protected><Layout /></Protected>}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<HomeIndex />} />
           <Route path="admin" element={<AdminDashboard />} />
           <Route path="admin/coaches/:id" element={<AdminCoachDetail />} />
           <Route path="students" element={<Students />} />
