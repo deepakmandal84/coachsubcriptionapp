@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using CoachSubscriptionApi.Data;
 using CoachSubscriptionApi.Entities;
+using CoachSubscriptionApi.Services;
 
 namespace CoachSubscriptionApi.Controllers;
 
@@ -12,8 +13,13 @@ namespace CoachSubscriptionApi.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IAuthService _auth;
 
-    public AdminController(AppDbContext db) => _db = db;
+    public AdminController(AppDbContext db, IAuthService auth)
+    {
+        _db = db;
+        _auth = auth;
+    }
 
     [HttpGet("dashboard")]
     public async Task<ActionResult<AdminDashboardDto>> GetDashboard(CancellationToken ct)
@@ -38,6 +44,7 @@ public class AdminController : ControllerBase
     {
         var list = await _db.Coaches.IgnoreQueryFilters()
             .AsNoTracking()
+            .Where(c => c.Role == Role.Coach && c.ClubTenantId == null)
             .OrderBy(c => c.Email)
             .Select(c => new CoachListDto(c.Id, c.Email, c.Name, c.AcademyName, c.IsActive, c.CreatedAt))
             .ToListAsync(ct);
@@ -47,7 +54,7 @@ public class AdminController : ControllerBase
     [HttpGet("coaches/{id:guid}/data")]
     public async Task<ActionResult<AdminCoachDataDto>> GetCoachData(Guid id, CancellationToken ct)
     {
-        var coach = await _db.Coaches.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+        var coach = await _db.Coaches.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(c => c.Id == id && c.Role == Role.Coach && c.ClubTenantId == null, ct);
         if (coach == null) return NotFound();
         var students = await _db.Students.IgnoreQueryFilters()
             .AsNoTracking()
@@ -76,15 +83,61 @@ public class AdminController : ControllerBase
             packages));
     }
 
-    [HttpPut("coaches/{id:guid}")]
-    public async Task<ActionResult<CoachListDto>> UpdateCoach(Guid id, [FromBody] UpdateCoachStatusRequest request, CancellationToken ct)
+    [HttpPost("academies")]
+    public async Task<ActionResult<CoachListDto>> OnboardAcademy([FromBody] AdminOnboardAcademyRequest request, CancellationToken ct)
     {
-        var c = await _db.Coaches.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password) || string.IsNullOrWhiteSpace(request.AcademyName))
+            return BadRequest("Academy name, email, and password are required.");
+        var norm = request.Email.Trim().ToLowerInvariant();
+        if (await _db.Coaches.IgnoreQueryFilters().AnyAsync(c => c.Email == norm, ct))
+            return Conflict("That email is already registered.");
+        var name = string.IsNullOrWhiteSpace(request.OwnerName) ? request.AcademyName.Trim() : request.OwnerName.Trim();
+        var coach = new Coach
+        {
+            Id = Guid.NewGuid(),
+            Email = norm,
+            PasswordHash = _auth.HashPasswordForCoach(request.Password),
+            Name = name,
+            AcademyName = request.AcademyName.Trim(),
+            Role = Role.Coach,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+        _db.Coaches.Add(coach);
+        await _db.SaveChangesAsync(ct);
+        return Ok(new CoachListDto(coach.Id, coach.Email, coach.Name, coach.AcademyName, coach.IsActive, coach.CreatedAt));
+    }
+
+    [HttpPut("coaches/{id:guid}")]
+    public async Task<ActionResult<CoachListDto>> UpdateCoach(Guid id, [FromBody] AdminUpdateAcademyRequest request, CancellationToken ct)
+    {
+        var c = await _db.Coaches.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.Role == Role.Coach && x.ClubTenantId == null, ct);
         if (c == null) return NotFound();
-        c.IsActive = request.IsActive;
+        if (request.IsActive.HasValue) c.IsActive = request.IsActive.Value;
+        if (!string.IsNullOrWhiteSpace(request.AcademyName)) c.AcademyName = request.AcademyName.Trim();
+        if (!string.IsNullOrWhiteSpace(request.OwnerName)) c.Name = request.OwnerName.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Email))
+        {
+            var norm = request.Email.Trim().ToLowerInvariant();
+            if (norm != c.Email && await _db.Coaches.IgnoreQueryFilters().AnyAsync(x => x.Email == norm && x.Id != id, ct))
+                return Conflict("That email is already in use.");
+            c.Email = norm;
+        }
+        if (!string.IsNullOrWhiteSpace(request.NewPassword)) c.PasswordHash = _auth.HashPasswordForCoach(request.NewPassword.Trim());
         c.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new CoachListDto(c.Id, c.Email, c.Name, c.AcademyName, c.IsActive, c.CreatedAt));
+    }
+
+    [HttpDelete("coaches/{id:guid}")]
+    public async Task<ActionResult> DeactivateAcademy(Guid id, CancellationToken ct)
+    {
+        var c = await _db.Coaches.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.Role == Role.Coach && x.ClubTenantId == null, ct);
+        if (c == null) return NotFound();
+        c.IsActive = false;
+        c.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
     }
 }
 
@@ -98,4 +151,7 @@ public record AdminSubscriptionDto(Guid Id, Guid StudentId, string StudentName, 
 public record AdminPackageDto(Guid Id, string Name, decimal Price, int ValidityDays, int? TotalSessions, string Type);
 
 public record CoachListDto(Guid Id, string Email, string Name, string? AcademyName, bool IsActive, DateTime CreatedAt);
-public record UpdateCoachStatusRequest(bool IsActive);
+
+public record AdminOnboardAcademyRequest(string AcademyName, string Email, string Password, string? OwnerName);
+
+public record AdminUpdateAcademyRequest(bool? IsActive, string? AcademyName, string? Email, string? OwnerName, string? NewPassword);

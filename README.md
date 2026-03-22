@@ -75,6 +75,8 @@ npm run dev
 | `SeedData__Enabled` | Set `true` to seed demo academy data when the DB has **no** coaches yet |
 | `SeedData__EnsureSuperAdmin` | Default `true`: if no `Role.Admin` exists, create Super Admin (`SeedData__SuperAdminEmail` / `SeedData__SuperAdminPassword`) so you can audit all academies |
 
+**Super Admin + tenant APIs:** the browser sends `X-Acting-Tenant-Id` (club **owner** coach id) after you pick an academy in the app header. That scopes Students, Packages, Subscriptions, Sessions, etc. Admin-only routes (`/api/admin/...`) ignore this and list all academies.
+
 ### Demo login (after seed)
 
 **Coach**

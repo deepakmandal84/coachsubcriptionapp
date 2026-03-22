@@ -118,7 +118,7 @@ public class CoachController : ControllerBase
 
     {
 
-        if (_tenant.TenantId == null || _tenant.UserId != _tenant.TenantId) return Forbid();
+        if (!ClubStaffPermissions.IsClubOwnerOrAdminActing(_tenant)) return Forbid();
 
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password) || string.IsNullOrWhiteSpace(request.Name))
 
@@ -126,7 +126,7 @@ public class CoachController : ControllerBase
 
         var created = await _auth.CreateStaffCoachAsync(
 
-            _tenant.TenantId.Value,
+            _tenant.TenantId!.Value,
 
             request.Email,
 
@@ -156,7 +156,7 @@ public class CoachController : ControllerBase
 
     {
 
-        if (_tenant.TenantId == null || _tenant.UserId != _tenant.TenantId) return Forbid();
+        if (!ClubStaffPermissions.IsClubOwnerOrAdminActing(_tenant)) return Forbid();
 
         if (id == _tenant.TenantId) return BadRequest("Use profile settings to update the owner account.");
 
@@ -206,7 +206,7 @@ public class CoachController : ControllerBase
 
     {
 
-        if (_tenant.TenantId == null || _tenant.UserId != _tenant.TenantId) return Forbid();
+        if (!ClubStaffPermissions.IsClubOwnerOrAdminActing(_tenant)) return Forbid();
 
         if (id == _tenant.TenantId) return BadRequest("Cannot remove the club owner.");
 
@@ -236,9 +236,11 @@ public class CoachController : ControllerBase
 
         if (_tenant.UserId == null) return Unauthorized();
 
-        if (_tenant.TenantId == null || _tenant.UserId != _tenant.TenantId) return Forbid();
+        if (!ClubStaffPermissions.IsClubOwnerOrAdminActing(_tenant)) return Forbid();
 
-        var c = await _db.Coaches.FirstOrDefaultAsync(x => x.Id == _tenant.UserId.Value, ct);
+        var profileCoachId = _tenant.IsAdmin ? _tenant.TenantId!.Value : _tenant.UserId!.Value;
+
+        var c = await _db.Coaches.FirstOrDefaultAsync(x => x.Id == profileCoachId, ct);
 
         if (c == null) return NotFound();
 
@@ -344,9 +346,11 @@ public class CoachController : ControllerBase
 
         if (_tenant.UserId == null) return Unauthorized();
 
-        if (_tenant.TenantId == null || _tenant.UserId != _tenant.TenantId) return Forbid();
+        if (!ClubStaffPermissions.IsClubOwnerOrAdminActing(_tenant)) return Forbid();
 
-        var c = await _db.Coaches.FirstOrDefaultAsync(x => x.Id == _tenant.UserId.Value, ct);
+        var profileCoachId = _tenant.IsAdmin ? _tenant.TenantId!.Value : _tenant.UserId!.Value;
+
+        var c = await _db.Coaches.FirstOrDefaultAsync(x => x.Id == profileCoachId, ct);
 
         if (c == null) return NotFound();
 

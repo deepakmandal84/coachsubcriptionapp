@@ -1,12 +1,20 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from './AuthContext'
+import { adminApi } from './api'
 import { FiMenu, FiX } from 'react-icons/fi'
 
 export default function Layout() {
   const { coach, logout } = useAuth()
   const primary = coach?.primaryColor || '#2563eb'
   const [menuOpen, setMenuOpen] = useState(false)
+  const [adminAcademies, setAdminAcademies] = useState([])
+  const actingTenantId = typeof localStorage !== 'undefined' ? localStorage.getItem('actingTenantId') : ''
+
+  useEffect(() => {
+    if (coach?.role !== 'Admin') return
+    adminApi.dashboard().then((d) => setAdminAcademies(d.coaches ?? [])).catch(() => setAdminAcademies([]))
+  }, [coach?.role])
 
   const isStaffCoach = coach?.role === 'Coach' && !!coach?.clubTenantId
 
@@ -41,6 +49,31 @@ export default function Layout() {
             </button>
             {coach?.logoUrl && <img src={coach.logoUrl} alt="" className="h-8" />}
             <span className="font-semibold text-lg truncate">{coach?.academyName || (coach?.role === 'Admin' ? 'Platform Admin' : 'Coach App')}</span>
+            {coach?.role === 'Admin' && (
+              <div className="hidden lg:flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
+                <label htmlFor="acting-tenant" className="text-xs text-gray-500 whitespace-nowrap">
+                  Manage academy
+                </label>
+                <select
+                  id="acting-tenant"
+                  value={actingTenantId}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v) localStorage.setItem('actingTenantId', v)
+                    else localStorage.removeItem('actingTenantId')
+                    window.location.reload()
+                  }}
+                  className="text-sm border border-gray-200 rounded-lg px-2 py-1 max-w-[200px] bg-white"
+                >
+                  <option value="">— Select —</option>
+                  {adminAcademies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.academyName || c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <nav className="hidden md:flex gap-1">
               {navLinks.map(l => (
                 <NavLink key={l.to} to={l.to} className={({ isActive }) => linkClass({ isActive })}>
@@ -75,6 +108,31 @@ export default function Layout() {
               </button>
             </div>
             <div className="p-4 space-y-2">
+              {coach?.role === 'Admin' && (
+                <div className="mb-4 pb-4 border-b">
+                  <label htmlFor="acting-tenant-m" className="block text-xs text-gray-500 mb-1">
+                    Manage academy
+                  </label>
+                  <select
+                    id="acting-tenant-m"
+                    value={actingTenantId}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      if (v) localStorage.setItem('actingTenantId', v)
+                      else localStorage.removeItem('actingTenantId')
+                      window.location.reload()
+                    }}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-2 bg-white"
+                  >
+                    <option value="">— Select academy —</option>
+                    {adminAcademies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.academyName || c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {navLinks.map(l => (
                 <NavLink
                   key={l.to}
@@ -102,6 +160,11 @@ export default function Layout() {
         </div>
       )}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+        {coach?.role === 'Admin' && !actingTenantId && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3 text-sm">
+            Select an <strong>academy</strong> above to use Students, Packages, Subscriptions, and Sessions for that club. Super Admin tools stay under <strong>Super Admin</strong>.
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

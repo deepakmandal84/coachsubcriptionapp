@@ -29,6 +29,7 @@ public class SessionsController : ControllerBase
         if (_tenant.UserId == null || _tenant.TenantId == null) return false;
         if (session.TenantId != _tenant.TenantId) return false;
         if (_tenant.UserId == session.TenantId) return true;
+        if (ClubStaffPermissions.IsAdminActingAsTenant(_tenant)) return true;
         return await _db.SessionCoaches.AsNoTracking()
             .AnyAsync(sc => sc.SessionId == session.Id && sc.CoachId == _tenant.UserId.Value, ct);
     }
@@ -170,7 +171,7 @@ public class SessionsController : ControllerBase
             .Select(sc => new AssignedCoachDto(sc.CoachId, sc.Coach.Name))
             .OrderBy(a => a.Name)
             .ToListAsync(ct);
-        var canMark = ClubStaffPermissions.IsClubOwner(_tenant) || coachIds.Contains(_tenant.UserId!.Value);
+        var canMark = ClubStaffPermissions.IsClubOwner(_tenant) || ClubStaffPermissions.IsAdminActingAsTenant(_tenant) || coachIds.Contains(_tenant.UserId!.Value);
         return CreatedAtAction(nameof(Get), new { id = session.Id }, new SessionDetailDto(session.Id, session.Date, session.StartTime, session.Type.ToString(), session.Title, session.Location, new List<SessionBookingDto>(), new List<AttendanceDto>(), assigned, session.CreatedAt, canMark));
     }
 

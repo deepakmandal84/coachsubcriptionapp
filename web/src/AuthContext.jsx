@@ -13,6 +13,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem('token')
+    localStorage.removeItem('actingTenantId')
     setState({ coach: null, loading: false })
   }, [])
 

@@ -8,13 +8,73 @@ export default function AdminCoachDetail() {
   const navigate = useNavigate()
   const { coach } = useAuth()
   const [data, setData] = useState(null)
+  const [loadErr, setLoadErr] = useState('')
   const [err, setErr] = useState('')
+  const [msg, setMsg] = useState('')
   const [tab, setTab] = useState('subscriptions')
+  const [edit, setEdit] = useState({ academyName: '', email: '', ownerName: '', newPassword: '', isActive: true })
+  const [editBusy, setEditBusy] = useState(false)
+
+  function load() {
+    if (!id || coach?.role !== 'Admin') return
+    adminApi.getCoachData(id).then((d) => {
+      setData(d)
+      const c = d.coach
+      setEdit({
+        academyName: c.academyName ?? '',
+        email: c.email ?? '',
+        ownerName: c.name ?? '',
+        newPassword: '',
+        isActive: c.isActive,
+      })
+    }).catch(e => setLoadErr(e instanceof Error ? e.message : 'Failed to load'))
+  }
 
   useEffect(() => {
-    if (!id || coach?.role !== 'Admin') return
-    adminApi.getCoachData(id).then(setData).catch(e => setErr(e instanceof Error ? e.message : 'Failed to load'))
+    setLoadErr('')
+    load()
   }, [id, coach?.role])
+
+  function workAsThisAcademy() {
+    if (!id) return
+    localStorage.setItem('actingTenantId', id)
+    window.location.href = '/'
+  }
+
+  async function saveEdit(e) {
+    e.preventDefault()
+    if (!id) return
+    setErr('')
+    setMsg('')
+    setEditBusy(true)
+    try {
+      await adminApi.updateAcademy(id, {
+        academyName: edit.academyName.trim() || undefined,
+        email: edit.email.trim() || undefined,
+        ownerName: edit.ownerName.trim() || undefined,
+        newPassword: edit.newPassword.trim() || undefined,
+        isActive: edit.isActive,
+      })
+      setMsg('Saved.')
+      setEdit((s) => ({ ...s, newPassword: '' }))
+      load()
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Failed')
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
+  async function deactivateAcademy() {
+    if (!id || !window.confirm('Deactivate this academy? The owner cannot sign in until reactivated.')) return
+    setErr('')
+    try {
+      await adminApi.deactivateAcademy(id)
+      navigate('/admin')
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Failed')
+    }
+  }
 
   if (err) return <p className="text-red-600">{err}</p>
   if (!data) return <p>Loading...</p>
@@ -29,6 +89,81 @@ export default function AdminCoachDetail() {
         <h1 className="text-2xl font-semibold">{coachDetail.name}</h1>
         <p className="text-gray-500">{coachDetail.academyName || '—'} · {coachDetail.email}</p>
         <p className="text-sm text-gray-400 mt-1">Signed up {new Date(coachDetail.createdAt).toLocaleDateString()} · {coachDetail.isActive ? 'Active' : 'Inactive'}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={workAsThisAcademy}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700"
+          >
+            Manage this academy (Students, Packages, Sessions…)
+          </button>
+        </div>
+      </div>
+
+      {msg && <p className="text-green-700 text-sm mb-4">{msg}</p>}
+      {err && <p className="text-red-600 text-sm mb-4">{err}</p>}
+
+      <div className="bg-white rounded-xl border p-4 mb-8 shadow-sm">
+        <h2 className="font-semibold text-gray-900 mb-3">Edit academy / owner</h2>
+        <form onSubmit={saveEdit} className="grid sm:grid-cols-2 gap-3 max-w-3xl">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Academy name</label>
+            <input
+              value={edit.academyName}
+              onChange={(e) => setEdit((s) => ({ ...s, academyName: e.target.value }))}
+              className="mt-1 w-full border rounded-lg px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Owner email</label>
+            <input
+              type="email"
+              value={edit.email}
+              onChange={(e) => setEdit((s) => ({ ...s, email: e.target.value }))}
+              className="mt-1 w-full border rounded-lg px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Owner display name</label>
+            <input
+              value={edit.ownerName}
+              onChange={(e) => setEdit((s) => ({ ...s, ownerName: e.target.value }))}
+              className="mt-1 w-full border rounded-lg px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">New password (optional)</label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={edit.newPassword}
+              onChange={(e) => setEdit((s) => ({ ...s, newPassword: e.target.value }))}
+              className="mt-1 w-full border rounded-lg px-3 py-2"
+              placeholder="Leave blank to keep"
+            />
+          </div>
+          <div className="sm:col-span-2 flex items-center gap-2">
+            <input
+              id="isActive"
+              type="checkbox"
+              checked={edit.isActive}
+              onChange={(e) => setEdit((s) => ({ ...s, isActive: e.target.checked }))}
+            />
+            <label htmlFor="isActive" className="text-sm text-gray-700">Academy active (owner can sign in)</label>
+          </div>
+          <div className="sm:col-span-2 flex flex-wrap gap-2">
+            <button type="submit" disabled={editBusy} className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 disabled:opacity-50">
+              {editBusy ? 'Saving…' : 'Save changes'}
+            </button>
+            <button
+              type="button"
+              onClick={deactivateAcademy}
+              className="px-4 py-2 border border-red-200 text-red-700 rounded-lg text-sm hover:bg-red-50"
+            >
+              Deactivate academy
+            </button>
+          </div>
+        </form>
       </div>
 
       <div className="flex gap-2 border-b mb-4">

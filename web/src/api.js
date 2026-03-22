@@ -1,7 +1,16 @@
 const API = '/api'
 
+/** Super Admin: club owner coach id — sent to API so tenant-scoped routes work (see backend TenantMiddleware). */
+export const ACTING_TENANT_HEADER = 'X-Acting-Tenant-Id'
+
 function getToken() {
   return localStorage.getItem('token')
+}
+
+function actingTenantHeaders() {
+  const id = localStorage.getItem('actingTenantId')
+  if (!id) return {}
+  return { [ACTING_TENANT_HEADER]: id }
 }
 
 /** Build query string from params, omitting undefined, null, and empty string so URL never has "=undefined" */
@@ -54,7 +63,11 @@ export const coachApi = {
     const form = new FormData()
     form.append('file', file)
     const token = getToken()
-    return fetch(`${API}/coach/me/logo`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form }).then(r => { if (!r.ok) throw new Error('Upload failed'); return r.json() })
+    return fetch(`${API}/coach/me/logo`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...actingTenantHeaders() },
+      body: form,
+    }).then(r => { if (!r.ok) throw new Error('Upload failed'); return r.json() })
   },
 }
 
@@ -141,5 +154,7 @@ export const parentApi = {
 export const adminApi = {
   dashboard: () => api('/admin/dashboard'),
   getCoachData: (coachId) => api(`/admin/coaches/${coachId}/data`),
-  updateCoach: (id, body) => api(`/admin/coaches/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  onboardAcademy: (body) => api('/admin/academies', { method: 'POST', body: JSON.stringify(body) }),
+  updateAcademy: (id, body) => api(`/admin/coaches/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deactivateAcademy: (id) => api(`/admin/coaches/${id}`, { method: 'DELETE' }),
 }
