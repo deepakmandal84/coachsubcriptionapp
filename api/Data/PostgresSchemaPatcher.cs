@@ -24,6 +24,18 @@ public static class PostgresSchemaPatcher
 
         await db.Database.ExecuteSqlRawAsync(
             """
+            ALTER TABLE coaches ADD COLUMN IF NOT EXISTS "ScheduleShareSlug" character varying(64) NULL;
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_coaches_ScheduleShareSlug" ON coaches ("ScheduleShareSlug");
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
             CREATE TABLE IF NOT EXISTS sessionbookings (
                 "Id" uuid NOT NULL,
                 "TenantId" uuid NOT NULL,
@@ -184,6 +196,14 @@ public static class PostgresSchemaPatcher
             """
             INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
             VALUES ('20260322100000_CoachStaffPermissions', '8.0.11')
+            ON CONFLICT ("MigrationId") DO NOTHING;
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+            VALUES ('20260323130000_ScheduleShareSlug', '8.0.11')
             ON CONFLICT ("MigrationId") DO NOTHING;
             """,
             cancellationToken: ct);

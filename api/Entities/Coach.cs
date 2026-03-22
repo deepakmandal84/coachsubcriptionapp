@@ -15,6 +15,9 @@ public class Coach
     public string? PrimaryColor { get; set; }
     /// <summary>Secret token for public class schedule / booking link (no auth).</summary>
     public string? ScheduleShareToken { get; set; }
+
+    /// <summary>Friendly URL segment for public schedule: /{slug}/info (lowercase, unique).</summary>
+    public string? ScheduleShareSlug { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public bool IsActive { get; set; } = true;

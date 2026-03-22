@@ -3,6 +3,11 @@ import { useParams } from 'react-router-dom'
 import { scheduleApi } from '../api'
 import LinkShare from '../components/LinkShare'
 
+/** Avoid shadowing real app routes if someone uses these as slugs. */
+const RESERVED_SCHEDULE_KEYS = new Set([
+  'login', 'register', 'admin', 'settings', 'students', 'packages', 'subscriptions', 'sessions', 'api', 'uploads', 'p', '',
+])
+
 function formatSessionTime(s) {
   const t = s.startTime
   if (typeof t === 'string') return t.slice(0, 5)
@@ -13,7 +18,8 @@ function formatSessionTime(s) {
 }
 
 export default function PublicSchedule() {
-  const { token } = useParams()
+  const { scheduleKey } = useParams()
+  const token = scheduleKey
   const [view, setView] = useState(null)
   const [err, setErr] = useState('')
   const [bookingId, setBookingId] = useState(null)
@@ -26,6 +32,16 @@ export default function PublicSchedule() {
 
   useEffect(() => {
     if (!token) return
+    try {
+      const decoded = decodeURIComponent(token)
+      if (RESERVED_SCHEDULE_KEYS.has(decoded.toLowerCase())) {
+        setErr('Invalid schedule link.')
+        return
+      }
+    } catch {
+      setErr('Invalid schedule link.')
+      return
+    }
     const now = new Date()
     const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
     const to = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString().slice(0, 10)
@@ -34,6 +50,16 @@ export default function PublicSchedule() {
       .then(setView)
       .catch(e => setErr(e instanceof Error ? e.message : 'Invalid or inactive schedule link.'))
   }, [token])
+
+  useEffect(() => {
+    if (!view?.academyName) return
+    const prev = document.title
+    const suffix = view.academyType ? ` · ${view.academyType}` : ''
+    document.title = `${view.academyName}${suffix} · Class schedule`
+    return () => {
+      document.title = prev
+    }
+  }, [view?.academyName, view?.academyType])
 
   async function handleBook(sessionId) {
     if (!token) return
@@ -91,13 +117,24 @@ export default function PublicSchedule() {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
       <div className="w-full max-w-lg bg-white rounded-3xl shadow-sm border overflow-hidden">
         <div className="p-6 border-b" style={{ borderColor: primary + '30', backgroundColor: primary + '08' }}>
-          {view.logoUrl && <img src={view.logoUrl} alt="" className="h-12 mb-2" />}
-          <h1 className="text-xl font-semibold" style={{ color: primary }}>
+          {view.logoUrl && <img src={view.logoUrl} alt="" className="h-12 mb-3 rounded-lg object-contain max-w-[200px]" />}
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Class schedule</p>
+          <h1 className="text-2xl font-semibold leading-tight" style={{ color: primary }}>
             {view.academyName}
           </h1>
-          <p className="text-sm text-gray-500">Browse schedule, packages, and book classes.</p>
+          {view.academyType && (
+            <p className="text-sm text-gray-600 mt-1.5 font-medium">{view.academyType}</p>
+          )}
+          <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+            Upcoming classes and packages for this program. Sign up with the email or phone we have on file, or request a trial below.
+          </p>
           <div className="mt-3">
-            <LinkShare url={shareUrl} title="Share schedule" text="Join my class schedule" variant="compact" />
+            <LinkShare
+              url={shareUrl}
+              title="Share schedule"
+              text={view.academyType ? `${view.academyName} — ${view.academyType}` : `${view.academyName} — class schedule`}
+              variant="compact"
+            />
           </div>
         </div>
         <div className="p-6 space-y-4">

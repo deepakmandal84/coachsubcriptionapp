@@ -19,8 +19,9 @@ This app is one **web service** (API + React UI in `wwwroot`) plus **PostgreSQL*
 4. **Database connection** — pick one:
 
    **Option A — `DATABASE_URL` (simplest)**  
-   On the **Postgres** service, copy `DATABASE_URL` or use **Variable reference** on the web service: add `DATABASE_URL` referencing the Postgres plugin’s `DATABASE_URL`.  
-   The API maps this to Npgsql automatically when `ConnectionStrings__DefaultConnection` is not set.
+   On your **app** service → **Variables** → **New variable** → **Reference variable** (or “Variable reference”).  
+   Select the **Postgres** service and choose **`DATABASE_URL`**. The variable name on the app service must be exactly **`DATABASE_URL`** (not `POSTGRES_URL` unless you map it yourself).  
+   The API reads this from the **process environment** (your `appsettings.json` is not in the Git/Docker image if it is gitignored, so env vars are required in production).
 
    **Option B — explicit Npgsql string**  
    **Variable name:** `ConnectionStrings__DefaultConnection`  
@@ -41,7 +42,7 @@ Set these on the **same service** that runs the Docker image:
 
 | Variable | Purpose |
 |----------|---------|
-| `ConnectionStrings__DefaultConnection` | Npgsql connection string (with SSL for Railway). |
+| `DATABASE_URL` **(recommended)** | Reference from Postgres → **`DATABASE_URL`**. Also supported: `DATABASE_PRIVATE_URL`, or `PGHOST`+`PGPORT`+`PGUSER`+`PGPASSWORD`+`PGDATABASE`, or `ConnectionStrings__DefaultConnection` (full Npgsql string). |
 | `Database__SkipAutoCreate` | `true` — required for Railway Postgres (skip `CREATE DATABASE`). |
 | `Jwt__Key` | At least **32 characters**, random secret (e.g. `openssl rand -base64 48`). |
 | `Jwt__Issuer` | e.g. `CoachSubscription` |

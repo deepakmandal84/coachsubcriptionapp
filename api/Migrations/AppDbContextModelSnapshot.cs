@@ -104,6 +104,10 @@ namespace CoachSubscriptionApi.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("ScheduleShareSlug")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
@@ -120,6 +124,9 @@ namespace CoachSubscriptionApi.Migrations
                         .IsUnique();
 
                     b.HasIndex("ScheduleShareToken")
+                        .IsUnique();
+
+                    b.HasIndex("ScheduleShareSlug")
                         .IsUnique();
 
                     b.ToTable("coaches");

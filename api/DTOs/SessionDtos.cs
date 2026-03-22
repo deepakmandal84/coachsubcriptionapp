@@ -15,5 +15,7 @@ public record ClassUsageSummaryDto(int MonthlyClassesTaken, int? SessionsRemaini
 public record BatchClassUsageRequest(List<Guid> StudentIds);
 public record BatchClassUsageResponse(List<StudentClassUsageDto> Results);
 public record PublicPackageDto(Guid Id, string Name, decimal Price, int? TotalSessions, string Type, int ValidityDays, string? Category);
-public record PublicScheduleViewDto(string AcademyName, string? LogoUrl, string? PrimaryColor, List<SessionListDto> Sessions, List<PublicPackageDto> Packages);
+/// <param name="AcademyName">Business / academy name when set; otherwise coach display name.</param>
+/// <param name="AcademyType">Category or custom type label for public branding (optional).</param>
+public record PublicScheduleViewDto(string AcademyName, string? AcademyType, string? LogoUrl, string? PrimaryColor, List<SessionListDto> Sessions, List<PublicPackageDto> Packages);
 public record TrialRequestDto(string Name, string? ParentName, string? Email, string Phone, string? Notes, Guid? DesiredPackageId);

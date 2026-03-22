@@ -14,4 +14,4 @@ public record LoginRequest(string Email, string Password);
 
 public record AuthResult(string AccessToken, string Email, string Name, Guid Id, string Role, int ExpiresInSeconds, Guid? ClubTenantId);
 
-public record CoachDto(Guid Id, string Email, string Name, string? AcademyName, string? AcademyType, string? LogoUrl, string? PrimaryColor, string Role, Guid? ClubTenantId, bool CanCreateSessions, bool CanManageStudents, string? ScheduleShareToken);
+public record CoachDto(Guid Id, string Email, string Name, string? AcademyName, string? AcademyType, string? LogoUrl, string? PrimaryColor, string Role, Guid? ClubTenantId, bool CanCreateSessions, bool CanManageStudents, string? ScheduleShareSlug, string? ScheduleShareToken);

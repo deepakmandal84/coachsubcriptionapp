@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { AuthProvider, useAuth } from './AuthContext'
 
 function HomeIndex() {
@@ -30,6 +30,12 @@ function Protected({ children }) {
   return <>{children}</>
 }
 
+/** Old URLs used /s/{key}/info; redirect to /{key}/info */
+function LegacyPublicScheduleRedirect() {
+  const { scheduleKey } = useParams()
+  return <Navigate to={`/${encodeURIComponent(scheduleKey)}/info`} replace />
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -37,7 +43,9 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/p/:token" element={<ParentPortal />} />
-        <Route path="/s/:token" element={<PublicSchedule />} />
+        <Route path="/s/:scheduleKey/info" element={<LegacyPublicScheduleRedirect />} />
+        <Route path="/s/:scheduleKey" element={<LegacyPublicScheduleRedirect />} />
+        <Route path="/:scheduleKey/info" element={<PublicSchedule />} />
         <Route path="/" element={<Protected><Layout /></Protected>}>
           <Route index element={<HomeIndex />} />
           <Route path="admin" element={<AdminDashboard />} />

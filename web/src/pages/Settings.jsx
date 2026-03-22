@@ -2,8 +2,16 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../AuthContext'
 import { coachApi } from '../api'
 import { PACKAGE_CATEGORIES, getThemeColorForCategory } from '../constants/categories'
-import LinkShare from '../components/LinkShare'
-import { FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi'
+import { FaEnvelope, FaInstagram, FaWhatsapp } from 'react-icons/fa'
+import { FiCopy, FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi'
+
+function buildPublicScheduleUrl(coach) {
+  if (typeof window === 'undefined' || !coach?.scheduleShareToken) return ''
+  const origin = window.location.origin
+  const slug = coach.scheduleShareSlug?.trim()
+  const key = slug ? slug.toLowerCase() : coach.scheduleShareToken
+  return `${origin}/${encodeURIComponent(key)}/info`
+}
 
 export default function Settings() {
   const { coach, refresh } = useAuth()
@@ -162,21 +170,71 @@ export default function Settings() {
     setEditErr('')
   }
 
-  async function handleGenerateScheduleLink() {
+  async function handleGeneratePublicScheduleLink() {
     setScheduleMsg('')
+    setErr('')
     setScheduleTokenBusy(true)
     try {
       const r = await coachApi.regenerateScheduleShareToken()
       await refresh()
-      const path = `${window.location.origin}/s/${r.token}`
-      setScheduleMsg(path)
+      const origin = window.location.origin
+      const key = r.slug?.trim() ? r.slug.trim().toLowerCase() : r.token
+      const path = `${origin}/${encodeURIComponent(key)}/info`
       await navigator.clipboard.writeText(path)
+      setScheduleMsg('Copied to clipboard.')
+      setTimeout(() => setScheduleMsg(''), 2500)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to generate link')
     } finally {
       setScheduleTokenBusy(false)
     }
   }
+
+  async function handleCopyPublicScheduleLink() {
+    if (!coach?.scheduleShareToken) return
+    setScheduleMsg('')
+    setErr('')
+    const path = buildPublicScheduleUrl(coach)
+    try {
+      await navigator.clipboard.writeText(path)
+      setScheduleMsg('Copied to clipboard.')
+      setTimeout(() => setScheduleMsg(''), 2500)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not copy')
+    }
+  }
+
+  function handleShareScheduleWhatsApp() {
+    if (!coach?.scheduleShareToken) return
+    const path = buildPublicScheduleUrl(coach)
+    const msg = `Class schedule\n${path}`
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer')
+  }
+
+  function handleShareScheduleEmail() {
+    if (!coach?.scheduleShareToken) return
+    const path = buildPublicScheduleUrl(coach)
+    setScheduleMsg('')
+    setErr('')
+    window.location.href = `mailto:?subject=${encodeURIComponent('Class schedule')}&body=${encodeURIComponent(`Hi,\n\n${path}`)}`
+  }
+
+  async function handleShareScheduleInstagram() {
+    if (!coach?.scheduleShareToken) return
+    const path = buildPublicScheduleUrl(coach)
+    setScheduleMsg('')
+    setErr('')
+    try {
+      await navigator.clipboard.writeText(path)
+      setScheduleMsg('Link copied — paste in Instagram.')
+      setTimeout(() => setScheduleMsg(''), 3000)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not copy')
+    }
+  }
+
+  const scheduleIconBtnClass =
+    'shrink-0 p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50 inline-flex items-center justify-center'
 
   const brandingForm = (
     <form onSubmit={handleSubmit} className="max-w-md space-y-4">
@@ -227,30 +285,70 @@ export default function Settings() {
         <p className="text-xs text-gray-500 mb-3">
           Anyone with the link can view upcoming classes and sign up using email or phone on their student profile.
         </p>
-        {coach?.scheduleShareToken && (
-          <p className="text-xs font-mono break-all text-gray-600 mb-2">
-            {typeof window !== 'undefined' ? `${window.location.origin}/s/${coach.scheduleShareToken}` : ''}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={handleGenerateScheduleLink}
-          disabled={scheduleTokenBusy}
-          className="px-3 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900 disabled:opacity-50"
-        >
-          {coach?.scheduleShareToken ? 'Regenerate & copy link' : 'Generate & copy link'}
-        </button>
-        {scheduleMsg && <p className="text-xs text-green-600 mt-2">Copied to clipboard: {scheduleMsg}</p>}
-        {coach?.scheduleShareToken && (
-          <div className="mt-3">
-            <LinkShare
-              url={scheduleMsg || (typeof window !== 'undefined' ? `${window.location.origin}/s/${coach.scheduleShareToken}` : '')}
-              title="Share schedule"
-              text="Join my class schedule"
-              variant="compact"
-            />
+        {coach?.scheduleShareToken ? (
+          <div className="flex items-start gap-2 mb-1">
+            <p className="text-xs font-mono break-all text-gray-800 flex-1 min-w-0 leading-relaxed">
+              {buildPublicScheduleUrl(coach)}
+            </p>
+            <div className="shrink-0 flex items-center gap-1 mt-0.5 flex-wrap justify-end">
+              <button
+                type="button"
+                onClick={handleCopyPublicScheduleLink}
+                disabled={scheduleTokenBusy}
+                aria-label="Copy link"
+                title="Copy link"
+                className={scheduleIconBtnClass}
+              >
+                <FiCopy className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleShareScheduleWhatsApp}
+                disabled={scheduleTokenBusy}
+                aria-label="Share on WhatsApp"
+                title="Share on WhatsApp"
+                className={scheduleIconBtnClass}
+              >
+                <FaWhatsapp className="w-4 h-4" style={{ color: '#25D366' }} />
+              </button>
+              <button
+                type="button"
+                onClick={handleShareScheduleEmail}
+                disabled={scheduleTokenBusy}
+                aria-label="Share by email"
+                title="Share by email"
+                className={scheduleIconBtnClass}
+              >
+                <FaEnvelope className="w-4 h-4 text-blue-600" />
+              </button>
+              <button
+                type="button"
+                onClick={handleShareScheduleInstagram}
+                disabled={scheduleTokenBusy}
+                aria-label="Copy for Instagram"
+                title="Copy link to paste in Instagram"
+                className={`${scheduleIconBtnClass} p-1`}
+              >
+                <span
+                  className="inline-flex items-center justify-center rounded p-0.5"
+                  style={{ background: 'linear-gradient(45deg, #F58529, #DD2A7B, #8134AF, #515BD4)' }}
+                >
+                  <FaInstagram className="w-3.5 h-3.5 text-white" />
+                </span>
+              </button>
+            </div>
           </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleGeneratePublicScheduleLink}
+            disabled={scheduleTokenBusy}
+            className="px-3 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900 disabled:opacity-50"
+          >
+            Generate link
+          </button>
         )}
+        {scheduleMsg && <p className="text-xs text-green-600 mt-2">{scheduleMsg}</p>}
       </div>
       <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
     </form>

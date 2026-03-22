@@ -24,20 +24,17 @@ var portEnv = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(portEnv))
     builder.WebHost.UseUrls($"http://0.0.0.0:{portEnv}");
 
-// Railway / Render style DATABASE_URL when ConnectionStrings__DefaultConnection is not set
-var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-if (string.IsNullOrEmpty(builder.Configuration.GetConnectionString("DefaultConnection")) && !string.IsNullOrEmpty(databaseUrl))
+// Connection string: appsettings may be absent in Docker (not in git). Prefer env: DATABASE_URL, DATABASE_PRIVATE_URL, or PG* (Railway).
+var connStr = RailwayConfig.ResolveDefaultConnection(builder.Configuration);
+if (string.IsNullOrEmpty(connStr))
+    throw new InvalidOperationException(
+        "Connection string 'DefaultConnection' is not set. On Railway: add variable DATABASE_URL (reference from Postgres) or set ConnectionStrings__DefaultConnection, or set PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE.");
+builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
 {
-    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-    {
-        ["ConnectionStrings:DefaultConnection"] = RailwayConfig.DatabaseUrlToNpgsql(databaseUrl)
-    });
-}
+    ["ConnectionStrings:DefaultConnection"] = connStr
+});
 
 // Ensure database exists (local dev), then apply migrations immediately (same connection, before Hangfire)
-var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
-if (string.IsNullOrEmpty(connStr))
-    throw new InvalidOperationException("Connection string 'DefaultConnection' is not set.");
 
 var skipAutoCreateDb = builder.Configuration.GetValue<bool>("Database:SkipAutoCreate");
 
@@ -193,8 +190,13 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions { Authorization = new
 
 RecurringJob.AddOrUpdate<ReminderJob>("reminders-daily", j => j.RunAsync(CancellationToken.None), Cron.Daily);
 
-if (File.Exists(Path.Combine(app.Environment.WebRootPath, "index.html")))
-    app.MapFallbackToFile("index.html");
+var webRoot = app.Environment.WebRootPath;
+if (!string.IsNullOrEmpty(webRoot))
+{
+    var spaIndex = Path.Combine(webRoot, "index.html");
+    if (File.Exists(spaIndex))
+        app.MapFallbackToFile("index.html");
+}
 
 app.Run();
 
@@ -205,6 +207,41 @@ file sealed class HangfireAuthFilter : IDashboardAuthorizationFilter
 
 file static class RailwayConfig
 {
+    public static string? ResolveDefaultConnection(IConfiguration config)
+    {
+        var cs = config.GetConnectionString("DefaultConnection");
+        if (!string.IsNullOrEmpty(cs))
+            return cs;
+
+        foreach (var envName in new[] { "DATABASE_URL", "DATABASE_PRIVATE_URL" })
+        {
+            var url = Environment.GetEnvironmentVariable(envName);
+            if (!string.IsNullOrEmpty(url))
+                return DatabaseUrlToNpgsql(url);
+        }
+
+        var host = Environment.GetEnvironmentVariable("PGHOST");
+        if (string.IsNullOrEmpty(host))
+            return null;
+        var user = Environment.GetEnvironmentVariable("PGUSER");
+        var database = Environment.GetEnvironmentVariable("PGDATABASE");
+        if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(database))
+            return null;
+        var portStr = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
+        var password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
+        if (!int.TryParse(portStr, out var port))
+            port = 5432;
+        return new NpgsqlConnectionStringBuilder
+        {
+            Host = host,
+            Port = port,
+            Username = user,
+            Password = password,
+            Database = database,
+            SslMode = SslMode.Require
+        }.ConnectionString;
+    }
+
     /// <summary>Maps postgres:// or postgresql:// URL to an Npgsql connection string (SSL required for typical cloud Postgres).</summary>
     public static string DatabaseUrlToNpgsql(string databaseUrl)
     {

@@ -90,6 +90,7 @@ public class AuthService : IAuthService
             c.Id, c.Email, c.Name, c.AcademyName, c.AcademyType, c.LogoUrl, c.PrimaryColor, c.Role.ToString(), c.ClubTenantId,
             isOwner || c.CanCreateSessions,
             isOwner || c.CanManageStudents,
+            c.ScheduleShareSlug,
             c.ScheduleShareToken);
     }
 

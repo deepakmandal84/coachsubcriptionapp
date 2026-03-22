@@ -34,6 +34,7 @@ public class AppDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.Email).IsUnique();
             e.HasIndex(x => x.ScheduleShareToken).IsUnique();
+            e.HasIndex(x => x.ScheduleShareSlug).IsUnique();
             e.HasIndex(x => x.ClubTenantId);
             e.HasOne(x => x.ClubOwner).WithMany().HasForeignKey(x => x.ClubTenantId).OnDelete(DeleteBehavior.Restrict);
         });

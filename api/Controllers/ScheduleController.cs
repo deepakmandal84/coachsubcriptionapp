@@ -21,7 +21,7 @@ public class ScheduleController : ControllerBase
     [HttpGet("{token}/sessions")]
     public async Task<ActionResult<PublicScheduleViewDto>> ListSessions(string token, [FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
     {
-        var coach = await _db.Coaches.AsNoTracking().FirstOrDefaultAsync(c => c.ScheduleShareToken == token && c.IsActive, ct);
+        var coach = await FindCoachByPublicScheduleKeyAsync(token, ct);
         if (coach == null || string.IsNullOrEmpty(coach.ScheduleShareToken))
             return NotFound("Invalid schedule link.");
 
@@ -69,13 +69,14 @@ public class ScheduleController : ControllerBase
             .Select(p => new PublicPackageDto(p.Id, p.Name, p.Price, p.TotalSessions, p.Type.ToString(), p.ValidityDays, p.Category))
             .ToListAsync(ct);
 
-        return Ok(new PublicScheduleViewDto(coach.AcademyName ?? coach.Name, coach.LogoUrl, coach.PrimaryColor, sessions, packages));
+        var brandingName = string.IsNullOrWhiteSpace(coach.AcademyName) ? coach.Name : coach.AcademyName.Trim();
+        return Ok(new PublicScheduleViewDto(brandingName, coach.AcademyType, coach.LogoUrl, coach.PrimaryColor, sessions, packages));
     }
 
     [HttpPost("{token}/sessions/{sessionId:guid}/book")]
     public async Task<ActionResult> Book(string token, Guid sessionId, [FromBody] BookSessionRequest request, CancellationToken ct)
     {
-        var coach = await _db.Coaches.AsNoTracking().FirstOrDefaultAsync(c => c.ScheduleShareToken == token && c.IsActive, ct);
+        var coach = await FindCoachByPublicScheduleKeyAsync(token, ct);
         if (coach == null || string.IsNullOrEmpty(coach.ScheduleShareToken))
             return NotFound("Invalid schedule link.");
 
@@ -123,7 +124,7 @@ public class ScheduleController : ControllerBase
     [HttpPost("{token}/trial-request")]
     public async Task<ActionResult> TrialRequest(string token, [FromBody] TrialRequestDto request, CancellationToken ct)
     {
-        var coach = await _db.Coaches.AsNoTracking().FirstOrDefaultAsync(c => c.ScheduleShareToken == token && c.IsActive, ct);
+        var coach = await FindCoachByPublicScheduleKeyAsync(token, ct);
         if (coach == null || string.IsNullOrEmpty(coach.ScheduleShareToken))
             return NotFound("Invalid schedule link.");
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -159,5 +160,19 @@ public class ScheduleController : ControllerBase
         });
         await _db.SaveChangesAsync(ct);
         return Ok();
+    }
+
+    /// <summary>Resolve public schedule by friendly slug (case-insensitive) or legacy opaque token.</summary>
+    private async Task<Coach?> FindCoachByPublicScheduleKeyAsync(string rawKey, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(rawKey)) return null;
+        var key = Uri.UnescapeDataString(rawKey.Trim());
+        var slugLookup = key.ToLowerInvariant();
+        var bySlug = await _db.Coaches.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IsActive && c.ScheduleShareSlug == slugLookup, ct);
+        if (bySlug != null && !string.IsNullOrEmpty(bySlug.ScheduleShareToken))
+            return bySlug;
+        return await _db.Coaches.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IsActive && c.ScheduleShareToken == key, ct);
     }
 }
