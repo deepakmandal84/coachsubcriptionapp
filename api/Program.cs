@@ -77,23 +77,21 @@ try
         Console.WriteLine("Applying migrations...");
         await db.Database.MigrateAsync();
         Console.WriteLine("Migrations applied.");
-        await PostgresSchemaPatcher.EnsureSessionBookingSchemaAsync(db);
 
-        // Seed using the same DbContext (same connection)
+        // Patcher runs ALTER TABLE coaches; if __EFMigrationsHistory is out of sync (no tables), that throws 42P01 before Seed — same recovery as missing tables on seed.
         try
         {
+            await PostgresSchemaPatcher.EnsureSessionBookingSchemaAsync(db);
             await db.SeedAsync(builder.Configuration);
         }
         catch (PostgresException ex) when (ex.SqlState == "42P01")
         {
-            // Tables missing (e.g. old __EFMigrationsHistory). Create schema from model and record migrations.
             Console.WriteLine("Tables missing, creating schema...");
             await db.Database.ExecuteSqlRawAsync("DROP TABLE IF EXISTS \"__EFMigrationsHistory\"");
             await db.Database.ExecuteSqlRawAsync("DROP TABLE IF EXISTS __efmigrationshistory");
             using var retryScope = migrationProvider.CreateScope();
             var dbRetry = retryScope.ServiceProvider.GetRequiredService<AppDbContext>();
             await dbRetry.Database.EnsureCreatedAsync();
-            // Record migrations so future MigrateAsync() does nothing
             await dbRetry.Database.ExecuteSqlRawAsync(
                 "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" varchar(150) NOT NULL PRIMARY KEY, \"ProductVersion\" varchar(32) NOT NULL)");
             await dbRetry.Database.ExecuteSqlRawAsync(
