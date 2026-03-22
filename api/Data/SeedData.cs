@@ -8,9 +8,55 @@ public static class SeedData
 {
     public static async Task SeedAsync(this AppDbContext db, IConfiguration config, CancellationToken ct = default)
     {
-        if (!config.GetValue<bool>("SeedData:Enabled")) return;
-        if (await db.Coaches.IgnoreQueryFilters().AnyAsync(ct)) return;
+        var seedDemo = config.GetValue<bool>("SeedData:Enabled");
+        var anyCoaches = await db.Coaches.IgnoreQueryFilters().AnyAsync(ct);
 
+        if (seedDemo && !anyCoaches)
+        {
+            await SeedDemoTenantsAsync(db, ct);
+            return;
+        }
+
+        await EnsureSuperAdminAsync(db, config, ct);
+    }
+
+    /// <summary>
+    /// When no <see cref="Role.Admin"/> exists, inserts one so you can log in and use the admin API across academies.
+    /// Runs even if demo seed is disabled. Configure via SeedData:SuperAdminEmail / SeedData:SuperAdminPassword (or env SeedData__*).
+    /// </summary>
+    static async Task EnsureSuperAdminAsync(AppDbContext db, IConfiguration config, CancellationToken ct)
+    {
+        if (!config.GetValue("SeedData:EnsureSuperAdmin", true)) return;
+
+        if (await db.Coaches.IgnoreQueryFilters().AnyAsync(c => c.Role == Role.Admin, ct))
+            return;
+
+        var email = (config["SeedData:SuperAdminEmail"] ?? "admin@demo.local").Trim().ToLowerInvariant();
+        var password = config["SeedData:SuperAdminPassword"] ?? "Admin123!";
+
+        if (await db.Coaches.IgnoreQueryFilters().AnyAsync(c => c.Email == email, ct))
+        {
+            Console.WriteLine(
+                $"SeedData: Super Admin not created — email '{email}' is already registered. Promote that user to Admin in the database or set SeedData__SuperAdminEmail to a free address.");
+            return;
+        }
+
+        db.Coaches.Add(new Coach
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            PasswordHash = AuthServiceHash(password),
+            Name = "Super Admin",
+            Role = Role.Admin,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        });
+        await db.SaveChangesAsync(ct);
+        Console.WriteLine($"SeedData: Super Admin created ({email}). Change the password after first login in production.");
+    }
+
+    static async Task SeedDemoTenantsAsync(AppDbContext db, CancellationToken ct)
+    {
         var adminId = Guid.NewGuid();
         var admin = new Coach
         {

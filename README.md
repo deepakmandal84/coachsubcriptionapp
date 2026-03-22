@@ -72,7 +72,8 @@ npm run dev
 | `Cors__Origins` | Allowed origins (e.g. `http://localhost:5173`) |
 | `Smtp__Host`, `Port`, `User`, `Password`, `From` | SMTP for email reminders (optional) |
 | `Twilio__AccountSid`, `AuthToken`, `WhatsAppFrom` | Twilio WhatsApp (optional) |
-| `SeedData__Enabled` | Set `true` to seed one demo coach (dev only) |
+| `SeedData__Enabled` | Set `true` to seed demo academy data when the DB has **no** coaches yet |
+| `SeedData__EnsureSuperAdmin` | Default `true`: if no `Role.Admin` exists, create Super Admin (`SeedData__SuperAdminEmail` / `SeedData__SuperAdminPassword`) so you can audit all academies |
 
 ### Demo login (after seed)
 

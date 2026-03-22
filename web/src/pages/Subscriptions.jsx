@@ -122,15 +122,24 @@ export default function Subscriptions() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <span className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-violet-100 text-violet-700">
+      <div className="flex items-start justify-between gap-3 mb-6">
+        <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2 min-w-0 pr-2">
+          <span className="inline-flex shrink-0 items-center justify-center h-9 w-9 rounded-xl bg-violet-100 text-violet-700">
             <FiCreditCard />
           </span>
-          Subscriptions
+          <span className="truncate">Subscriptions</span>
         </h1>
         {activeTab === 'subscriptions' && (
-          <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 inline-flex items-center gap-2 shadow-sm"><FiPlus />New subscription</button>
+          <button
+            type="button"
+            onClick={openCreate}
+            title="New subscription"
+            aria-label="Add new subscription"
+            className="shrink-0 inline-flex items-center justify-center gap-2 rounded-full bg-blue-600 text-white shadow-md hover:bg-blue-700 active:scale-[0.98] transition h-11 w-11 md:h-auto md:w-auto md:px-4 md:py-2.5 md:rounded-xl md:shadow-sm md:active:scale-100"
+          >
+            <FiPlus className="text-xl md:text-lg" strokeWidth={2.25} />
+            <span className="hidden md:inline font-medium text-sm">New subscription</span>
+          </button>
         )}
       </div>
 
