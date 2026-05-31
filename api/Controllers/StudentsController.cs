@@ -6,6 +6,7 @@ using CoachSubscriptionApi.DTOs;
 using CoachSubscriptionApi.Entities;
 using CoachSubscriptionApi.Helpers;
 using CoachSubscriptionApi.Services;
+using Npgsql;
 
 namespace CoachSubscriptionApi.Controllers;
 
@@ -24,10 +25,29 @@ public class StudentsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<StudentListDto>>> List([FromQuery] string? status, [FromQuery] string? search, CancellationToken ct)
+    public async Task<ActionResult<List<StudentListDto>>> List(
+        [FromQuery] string? status,
+        [FromQuery] string? roster,
+        [FromQuery] string? search,
+        CancellationToken ct)
     {
         if (_tenant.TenantId == null) return Forbid();
         var q = _db.Students.AsNoTracking();
+
+        if (!string.IsNullOrEmpty(roster))
+        {
+            var r = roster.Trim().ToLowerInvariant();
+            if (r is "active" or "current")
+                q = q.Where(x => x.Status != StudentStatus.Inactive);
+            else if (r is "deactivated" or "inactive")
+                q = q.Where(x => x.Status == StudentStatus.Inactive);
+        }
+        else if (string.IsNullOrEmpty(status))
+        {
+            // Default roster: hide deactivated unless explicitly requested.
+            q = q.Where(x => x.Status != StudentStatus.Inactive);
+        }
+
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<StudentStatus>(status, true, out var s))
             q = q.Where(x => x.Status == s);
         if (!string.IsNullOrEmpty(search))
@@ -134,10 +154,36 @@ public class StudentsController : ControllerBase
     {
         if (_tenant.TenantId == null) return Forbid();
         if (!await ClubStaffPermissions.CanManageStudentsAsync(_db, _tenant, ct)) return Forbid();
-        var x = await _db.Students.FirstOrDefaultAsync(s => s.Id == id, ct);
-        if (x == null) return NotFound();
-        _db.Students.Remove(x);
-        await _db.SaveChangesAsync(ct);
-        return NoContent();
+
+        try
+        {
+            var student = await StudentLifecycleService.DeactivateAsync(_db, _tenant.TenantId.Value, id, ct);
+            if (student == null) return NotFound();
+            return NoContent();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException pg && pg.SqlState == "23503")
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Cannot deactivate student",
+                Detail = "Some linked records could not be cleared. Try again or contact support.",
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
+    }
+
+    [HttpPost("{id:guid}/reactivate")]
+    public async Task<ActionResult<StudentDetailDto>> Reactivate(Guid id, CancellationToken ct)
+    {
+        if (_tenant.TenantId == null) return Forbid();
+        if (!await ClubStaffPermissions.CanManageStudentsAsync(_db, _tenant, ct)) return Forbid();
+
+        var existing = await _db.Students.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (existing == null) return NotFound();
+        if (existing.Status != StudentStatus.Inactive)
+            return BadRequest("Only deactivated students can be rejoined to the roster.");
+
+        var student = await StudentLifecycleService.ReactivateAsync(_db, _tenant.TenantId.Value, id, ct);
+        return Ok(ProgressMeasurementHelper.ToStudentDetailDto(student!));
     }
 }

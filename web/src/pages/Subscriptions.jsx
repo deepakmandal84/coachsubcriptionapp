@@ -51,7 +51,7 @@ export default function Subscriptions() {
       .then(setList)
       .catch((e) => setErr(formatError(e)))
       .finally(() => setLoading(false))
-    studentsApi.list().then(setStudents).catch(() => {})
+    studentsApi.list({ roster: 'active' }).then(setStudents).catch(() => {})
     packagesApi.list().then(setPackages).catch(() => {})
   }
 

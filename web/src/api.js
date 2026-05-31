@@ -78,6 +78,7 @@ export const studentsApi = {
   create: (body) => api('/students', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) => api(`/students/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (id) => api(`/students/${id}`, { method: 'DELETE' }),
+  reactivate: (id) => api(`/students/${id}/reactivate`, { method: 'POST' }),
   batchClassUsage: (studentIds) =>
     api('/students/class-usage', { method: 'POST', body: JSON.stringify({ studentIds }) }),
   setMeasurementUnit: (id, measurementUnit) =>

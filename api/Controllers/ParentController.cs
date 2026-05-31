@@ -29,6 +29,8 @@ public class ParentController : ControllerBase
         if (link == null) return NotFound("Invalid or expired link.");
         var student = await _db.Students.AsNoTracking().FirstOrDefaultAsync(s => s.Id == link.StudentId, ct);
         if (student == null) return NotFound();
+        if (student.Status == StudentStatus.Inactive)
+            return StatusCode(StatusCodes.Status403Forbidden, "This client account is deactivated. Ask your coach to reactivate you.");
         Subscription? sub = null;
         if (link.SubscriptionId.HasValue)
             sub = await _db.Subscriptions.AsNoTracking().Include(s => s.Package).FirstOrDefaultAsync(s => s.Id == link.SubscriptionId.Value, ct);

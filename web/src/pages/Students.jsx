@@ -4,7 +4,7 @@ import { studentsApi } from '../api'
 import { useAuth } from '../AuthContext'
 import { useAcademyPermissions } from '../hooks/useAcademyPermissions'
 import { useAppPaths } from '../hooks/useAppPaths'
-import { FiActivity, FiEdit2, FiPlus, FiSearch, FiTrash2, FiUser } from 'react-icons/fi'
+import { FiActivity, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUser, FiUserMinus } from 'react-icons/fi'
 import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
@@ -15,9 +15,15 @@ import Alert from '../components/ui/Alert'
 import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Tabs from '../components/ui/Tabs'
 import { TableSkeleton } from '../components/ui/Skeleton'
 import { useToast } from '../context/ToastContext'
 import { formatError } from '../utils/formatError'
+
+const ROSTER_TABS = [
+  { id: 'active', label: 'Active roster', icon: FiUser },
+  { id: 'deactivated', label: 'Deactivated', icon: FiUserMinus },
+]
 
 export default function Students() {
   const { coach } = useAuth()
@@ -27,12 +33,13 @@ export default function Students() {
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState('')
+  const [roster, setRoster] = useState('active')
   const [err, setErr] = useState('')
   const [modal, setModal] = useState(null)
   const [editing, setEditing] = useState(null)
-  const [deleteTarget, setDeleteTarget] = useState(null)
-  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deactivateTarget, setDeactivateTarget] = useState(null)
+  const [reactivateTarget, setReactivateTarget] = useState(null)
+  const [actionBusy, setActionBusy] = useState(false)
   const [form, setForm] = useState({
     name: '',
     parentName: '',
@@ -47,11 +54,13 @@ export default function Students() {
   })
   const loadVersionRef = useRef(0)
 
+  const isDeactivatedView = roster === 'deactivated'
+
   function load() {
     const version = ++loadVersionRef.current
     setLoading(true)
     studentsApi
-      .list({ search: search || undefined, status: status || undefined })
+      .list({ search: search || undefined, roster })
       .then((data) => {
         if (version === loadVersionRef.current) setList(data)
       })
@@ -65,10 +74,21 @@ export default function Students() {
 
   useEffect(() => {
     load()
-  }, [search, status])
+  }, [search, roster])
 
   function openCreate() {
-    setForm({ name: '', parentName: '', email: '', phone: '', notes: '', tags: '', status: 'Active', gender: 'Unspecified', height: '', dateOfBirth: '' })
+    setForm({
+      name: '',
+      parentName: '',
+      email: '',
+      phone: '',
+      notes: '',
+      tags: '',
+      status: 'Active',
+      gender: 'Unspecified',
+      height: '',
+      dateOfBirth: '',
+    })
     setEditing(null)
     setModal('create')
   }
@@ -109,6 +129,7 @@ export default function Students() {
       await studentsApi.create(payload)
       setModal(null)
       toast.success('Student added')
+      setRoster('active')
       load()
     } catch (e) {
       setErr(formatError(e))
@@ -132,31 +153,98 @@ export default function Students() {
     }
   }
 
-  async function handleDelete() {
-    if (!deleteTarget) return
-    setDeleteBusy(true)
+  async function handleDeactivate() {
+    if (!deactivateTarget) return
+    setActionBusy(true)
     try {
-      await studentsApi.delete(deleteTarget.id)
-      setDeleteTarget(null)
-      toast.success('Student removed')
+      await studentsApi.delete(deactivateTarget.id)
+      setDeactivateTarget(null)
+      toast.success(`${deactivateTarget.name} deactivated`)
       load()
     } catch (e) {
       setErr(formatError(e))
     } finally {
-      setDeleteBusy(false)
+      setActionBusy(false)
+    }
+  }
+
+  async function handleReactivate() {
+    if (!reactivateTarget) return
+    setActionBusy(true)
+    try {
+      await studentsApi.reactivate(reactivateTarget.id)
+      setReactivateTarget(null)
+      toast.success(`${reactivateTarget.name} is active again`)
+      setRoster('active')
+      load()
+    } catch (e) {
+      setErr(formatError(e))
+    } finally {
+      setActionBusy(false)
     }
   }
 
   const statusVariant = (s) => (s === 'Active' ? 'success' : s === 'Trial' ? 'warning' : 'default')
+
+  function renderActions(s) {
+    if (!canManageStudents) {
+      return (
+        <Link to={paths.studentProgress(s.id)}>
+          <Button variant="ghost" size="sm">
+            <FiActivity />
+            Progress
+          </Button>
+        </Link>
+      )
+    }
+
+    if (isDeactivatedView) {
+      return (
+        <div className="inline-flex flex-wrap gap-2 justify-end">
+          <Button variant="ghost" size="sm" onClick={() => openEdit(s)}>
+            <FiEdit2 />
+            Edit profile
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => setReactivateTarget(s)}>
+            <FiRefreshCw />
+            Rejoin roster
+          </Button>
+        </div>
+      )
+    }
+
+    return (
+      <div className="inline-flex flex-wrap gap-2 justify-end">
+        <Link to={paths.studentProgress(s.id)}>
+          <Button variant="ghost" size="sm">
+            <FiActivity />
+            Progress
+          </Button>
+        </Link>
+        <Button variant="ghost" size="sm" onClick={() => openEdit(s)}>
+          <FiEdit2 />
+          Edit
+        </Button>
+        <Button variant="ghost" size="sm" className="text-amber-700" onClick={() => setDeactivateTarget(s)}>
+          <FiUserMinus />
+          Deactivate
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div>
       <PageHeader
         icon={FiUser}
         title="Students"
-        description="Roster for your academy — link students to subscriptions and attendance."
+        description={
+          isDeactivatedView
+            ? 'Former clients — profile kept so you can bring them back on the roster.'
+            : 'Active roster — subscriptions, classes, and progress for current clients.'
+        }
         action={
-          canManageStudents ? (
+          canManageStudents && !isDeactivatedView ? (
             <Button onClick={openCreate}>
               <FiPlus />
               Add student
@@ -177,6 +265,10 @@ export default function Students() {
         </Alert>
       )}
 
+      <div className="mb-4">
+        <Tabs tabs={ROSTER_TABS} active={roster} onChange={setRoster} />
+      </div>
+
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1 max-w-md">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -188,12 +280,6 @@ export default function Students() {
             className="w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm focus-brand focus:outline-none"
           />
         </div>
-        <Select value={status} onChange={(e) => setStatus(e.target.value)} className="sm:w-40">
-          <option value="">All statuses</option>
-          <option value="Active">Active</option>
-          <option value="Trial">Trial</option>
-          <option value="Inactive">Inactive</option>
-        </Select>
       </div>
 
       {loading ? (
@@ -201,11 +287,15 @@ export default function Students() {
       ) : list.length === 0 ? (
         <Card>
           <EmptyState
-            icon={FiUser}
-            title="No students yet"
-            description="Add your first student to start selling packages and tracking attendance."
-            actionLabel={canManageStudents ? 'Add student' : undefined}
-            onAction={canManageStudents ? openCreate : undefined}
+            icon={isDeactivatedView ? FiUserMinus : FiUser}
+            title={isDeactivatedView ? 'No deactivated students' : 'No students yet'}
+            description={
+              isDeactivatedView
+                ? 'When you deactivate someone, they appear here. Their profile stays so you can rejoin them later.'
+                : 'Add your first student to start selling packages and tracking attendance.'
+            }
+            actionLabel={!isDeactivatedView && canManageStudents ? 'Add student' : undefined}
+            onAction={!isDeactivatedView && canManageStudents ? openCreate : undefined}
           />
         </Card>
       ) : (
@@ -234,28 +324,7 @@ export default function Students() {
                     <td className="p-3">
                       <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
                     </td>
-                    <td className="p-3 text-right">
-                      <div className="inline-flex flex-wrap gap-2 justify-end">
-                        <Link to={paths.studentProgress(s.id)}>
-                          <Button variant="ghost" size="sm">
-                            <FiActivity />
-                            Progress
-                          </Button>
-                        </Link>
-                        {canManageStudents ? (
-                          <>
-                            <Button variant="ghost" size="sm" onClick={() => openEdit(s)}>
-                              <FiEdit2 />
-                              Edit
-                            </Button>
-                            <Button variant="ghost" size="sm" className="text-red-600" onClick={() => setDeleteTarget(s)}>
-                              <FiTrash2 />
-                              Delete
-                            </Button>
-                          </>
-                        ) : null}
-                      </div>
-                    </td>
+                    <td className="p-3 text-right">{renderActions(s)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -279,24 +348,7 @@ export default function Students() {
                     {s.phone}
                   </p>
                 )}
-                <div className="flex gap-2 mt-3">
-                  <Link to={paths.studentProgress(s.id)} className="flex-1">
-                    <Button variant="secondary" size="sm" className="w-full">
-                      <FiActivity />
-                      Progress
-                    </Button>
-                  </Link>
-                  {canManageStudents && (
-                    <>
-                      <Button variant="secondary" size="sm" className="flex-1" onClick={() => openEdit(s)}>
-                        Edit
-                      </Button>
-                      <Button variant="ghost" size="sm" className="flex-1 text-red-600" onClick={() => setDeleteTarget(s)}>
-                        Delete
-                      </Button>
-                    </>
-                  )}
-                </div>
+                <div className="flex flex-wrap gap-2 mt-3">{renderActions(s)}</div>
               </Card>
             ))}
           </div>
@@ -333,11 +385,23 @@ export default function Students() {
               />
             </div>
             <Input label="Tags" value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} placeholder="e.g. group A, beginner" />
-            <Select label="Status" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
-              <option value="Active">Active</option>
-              <option value="Trial">Trial</option>
-              <option value="Inactive">Inactive</option>
-            </Select>
+            {modal === 'create' && (
+              <Select label="Status" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+                <option value="Active">Active</option>
+                <option value="Trial">Trial</option>
+              </Select>
+            )}
+            {modal === 'edit' && isDeactivatedView && (
+              <p className="text-sm text-slate-500 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+                Use <strong>Rejoin roster</strong> to activate this client again.
+              </p>
+            )}
+            {modal === 'edit' && !isDeactivatedView && (
+              <Select label="Status" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+                <option value="Active">Active</option>
+                <option value="Trial">Trial</option>
+              </Select>
+            )}
             <p className="text-sm font-medium text-slate-700 pt-2">Progress / body fat profile</p>
             <Select label="Gender" value={form.gender} onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}>
               <option value="Unspecified">Not set</option>
@@ -365,17 +429,31 @@ export default function Students() {
       )}
 
       <ConfirmDialog
-        open={!!deleteTarget}
-        title="Delete student?"
+        open={!!deactivateTarget}
+        title="Deactivate student?"
         description={
-          deleteTarget
-            ? `Remove ${deleteTarget.name} from your roster. This cannot be undone if they have no linked records.`
+          deactivateTarget
+            ? `${deactivateTarget.name} will move to Deactivated. Subscriptions, class history, progress logs, and portal links will be removed. Their profile (name, contact, body profile) is kept so you can rejoin them later.`
             : ''
         }
-        confirmLabel="Delete"
-        busy={deleteBusy}
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
+        confirmLabel="Deactivate"
+        busy={actionBusy}
+        onConfirm={handleDeactivate}
+        onCancel={() => setDeactivateTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={!!reactivateTarget}
+        title="Rejoin roster?"
+        description={
+          reactivateTarget
+            ? `Bring ${reactivateTarget.name} back as an active client. Add a new subscription and portal link when ready — past packages and progress were cleared at deactivation.`
+            : ''
+        }
+        confirmLabel="Rejoin roster"
+        busy={actionBusy}
+        onConfirm={handleReactivate}
+        onCancel={() => setReactivateTarget(null)}
       />
     </div>
   )

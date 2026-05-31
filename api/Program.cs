@@ -212,32 +212,24 @@ file static class RailwayConfig
     public static string? ResolveDefaultConnection(IConfiguration config)
     {
         var cs = config.GetConnectionString("DefaultConnection");
-        if (!string.IsNullOrEmpty(cs))
-        {
-            TryLogDbHost("ConnectionStrings:DefaultConnection", cs);
-            return cs;
-        }
+        if (!string.IsNullOrWhiteSpace(cs))
+            return NormalizeConnectionString(cs.Trim(), "ConnectionStrings:DefaultConnection");
 
-        // Railway: private URL resolves only inside Railway's network; public URL works from anywhere.
         foreach (var envName in new[] { "DATABASE_URL", "DATABASE_PRIVATE_URL", "DATABASE_PUBLIC_URL" })
         {
             var url = Environment.GetEnvironmentVariable(envName);
-            if (!string.IsNullOrEmpty(url))
-            {
-                var parsed = DatabaseUrlToNpgsql(url);
-                TryLogDbHost(envName, parsed);
-                return parsed;
-            }
+            if (!string.IsNullOrWhiteSpace(url))
+                return NormalizeConnectionString(url.Trim(), envName);
         }
 
-        var host = Environment.GetEnvironmentVariable("PGHOST");
+        var host = Environment.GetEnvironmentVariable("PGHOST")?.Trim();
         if (string.IsNullOrEmpty(host))
             return null;
-        var user = Environment.GetEnvironmentVariable("PGUSER");
-        var database = Environment.GetEnvironmentVariable("PGDATABASE");
+        var user = Environment.GetEnvironmentVariable("PGUSER")?.Trim();
+        var database = Environment.GetEnvironmentVariable("PGDATABASE")?.Trim();
         if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(database))
             return null;
-        var portStr = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
+        var portStr = Environment.GetEnvironmentVariable("PGPORT")?.Trim() ?? "5432";
         var password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
         if (!int.TryParse(portStr, out var port))
             port = 5432;
@@ -252,6 +244,40 @@ file static class RailwayConfig
         }.ConnectionString;
         TryLogDbHost("PG*", fromPg);
         return fromPg;
+    }
+
+    static string NormalizeConnectionString(string raw, string source)
+    {
+        if (raw.StartsWith("${{", StringComparison.Ordinal) || raw.Contains("${{"))
+            throw new InvalidOperationException(
+                $"Database config from {source} looks like an unresolved Railway template ({raw[..Math.Min(raw.Length, 40)]}…). " +
+                "In Railway → your app service → Variables, use **Add reference** (pick Postgres → DATABASE_URL). Do not paste ${{Postgres…}} by hand.");
+
+        var value = raw.Trim('"', '\'');
+
+        if (value.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+        {
+            var parsed = DatabaseUrlToNpgsql(value);
+            TryLogDbHost(source, parsed);
+            return parsed;
+        }
+
+        // Validate Npgsql key=value format early with a clear error.
+        try
+        {
+            _ = new NpgsqlConnectionStringBuilder(value);
+            TryLogDbHost(source, value);
+            return value;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Database config from {source} is not a valid Postgres connection string. " +
+                "Use Railway **Reference** → Postgres → **DATABASE_URL**, or set ConnectionStrings__DefaultConnection to " +
+                "Host=…;Port=5432;Username=…;Password=…;Database=…;SSL Mode=Require. " +
+                $"Parser error: {ex.Message}", ex);
+        }
     }
 
     static void TryLogDbHost(string source, string connectionString)
@@ -277,7 +303,7 @@ file static class RailwayConfig
         var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
         var database = uri.AbsolutePath.TrimStart('/');
         if (string.IsNullOrEmpty(database))
-            database = "postgres";
+            database = "railway";
         var port = uri.Port > 0 ? uri.Port : 5432;
         if (string.IsNullOrWhiteSpace(uri.Host))
             throw new InvalidOperationException(
