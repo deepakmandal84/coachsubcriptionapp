@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { sessionsApi, studentsApi } from '../api'
+import { useAppPaths } from '../hooks/useAppPaths'
 import { formatClassUsage } from '../utils/classUsage'
 
 function formatTime(session) {
@@ -13,6 +14,7 @@ function formatTime(session) {
 export default function SessionAttendance() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const paths = useAppPaths()
   const [session, setSession] = useState(null)
   const [students, setStudents] = useState([])
   const [err, setErr] = useState('')
@@ -114,7 +116,7 @@ export default function SessionAttendance() {
       <div className="max-w-lg mx-auto px-4 py-8">
         <p className="text-gray-700">{err || 'Loading...'}</p>
         {err && (
-          <button type="button" onClick={() => navigate('/sessions')} className="mt-4 text-blue-600 hover:underline">
+          <button type="button" onClick={() => navigate(paths.sessions)} className="mt-4 text-brand hover:underline">
             ← Back to sessions
           </button>
         )}
@@ -129,7 +131,7 @@ export default function SessionAttendance() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <button type="button" onClick={() => navigate('/sessions')} className="text-blue-600 text-sm hover:underline mb-1">
+          <button type="button" onClick={() => navigate(paths.sessions)} className="text-brand text-sm hover:underline mb-1">
             ← Sessions
           </button>
           <h1 className="text-2xl font-semibold">Attendance: {session.title}</h1>
@@ -141,7 +143,7 @@ export default function SessionAttendance() {
           type="button"
           onClick={handleSave}
           disabled={saving || !canEdit}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+          className="px-4 py-2 btn-brand text-white rounded-lg hover:opacity-95 disabled:opacity-50"
         >
           Save
         </button>
@@ -152,9 +154,9 @@ export default function SessionAttendance() {
         </div>
       )}
       {(session.bookings || []).length > 0 && (
-        <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm">
-          <div className="font-medium text-blue-900 mb-1">Signed up</div>
-          <ul className="list-disc list-inside text-blue-800 space-y-1">
+        <div className="mb-4 p-4 bg-brand-subtle border border-brand-subtle rounded-lg text-sm">
+          <div className="font-medium text-slate-900 mb-1">Signed up</div>
+          <ul className="list-disc list-inside text-brand space-y-1">
             {(session.bookings || []).map(b => (
               <li key={b.id}>
                 {b.studentName}

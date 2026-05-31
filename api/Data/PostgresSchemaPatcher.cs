@@ -208,4 +208,77 @@ public static class PostgresSchemaPatcher
             """,
             cancellationToken: ct);
     }
+
+    public static async Task EnsureProgressSchemaAsync(AppDbContext db, CancellationToken ct = default)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS "MeasurementUnit" integer NOT NULL DEFAULT 0;
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS progresscheckins (
+                "Id" uuid NOT NULL,
+                "TenantId" uuid NOT NULL,
+                "StudentId" uuid NOT NULL,
+                "RecordedOn" timestamp with time zone NOT NULL,
+                "WeightKg" numeric NULL,
+                "BodyFatPercent" numeric NULL,
+                "MeasurementsJson" text NULL,
+                "Notes" text NULL,
+                "Source" integer NOT NULL,
+                "CreatedByCoachId" uuid NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_progresscheckins" PRIMARY KEY ("Id"),
+                CONSTRAINT "FK_progresscheckins_coaches_TenantId" FOREIGN KEY ("TenantId") REFERENCES coaches ("Id") ON DELETE RESTRICT,
+                CONSTRAINT "FK_progresscheckins_students_StudentId" FOREIGN KEY ("StudentId") REFERENCES students ("Id") ON DELETE CASCADE
+            );
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE INDEX IF NOT EXISTS "IX_progresscheckins_TenantId_StudentId_RecordedOn"
+                ON progresscheckins ("TenantId", "StudentId", "RecordedOn");
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+            VALUES ('20260530120000_ProgressCheckIns', '8.0.11')
+            ON CONFLICT ("MigrationId") DO NOTHING;
+            """,
+            cancellationToken: ct);
+    }
+
+    public static async Task EnsureProgressProfileSchemaAsync(AppDbContext db, CancellationToken ct = default)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS "Gender" integer NOT NULL DEFAULT 0;
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS "HeightCm" numeric NULL;
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS "DateOfBirth" timestamp with time zone NULL;
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE progresscheckins ADD COLUMN IF NOT EXISTS "BodyFatMethod" integer NULL;
+            """,
+            cancellationToken: ct);
+    }
 }

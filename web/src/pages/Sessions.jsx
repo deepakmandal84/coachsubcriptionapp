@@ -2,13 +2,16 @@ import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { sessionsApi, coachApi } from '../api'
 import { useAuth } from '../AuthContext'
+import { useAcademyPermissions } from '../hooks/useAcademyPermissions'
+import { useAppPaths } from '../hooks/useAppPaths'
 import { FiCalendar, FiCheckCircle, FiClock, FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi'
 
 export default function Sessions() {
+  const paths = useAppPaths()
   const { coach } = useAuth()
   const isStaffCoach = coach?.role === 'Coach' && !!coach?.clubTenantId
   const isClubOwner = coach?.role === 'Coach' && !coach?.clubTenantId
-  const canManageSessions = coach?.role === 'Coach' && (coach?.clubTenantId == null || coach?.canCreateSessions === true)
+  const { canManageSessions } = useAcademyPermissions()
   const [filterCoachId, setFilterCoachId] = useState('')
   const staffFilterDefaultDone = useRef(false)
   const [list, setList] = useState([])
@@ -160,13 +163,13 @@ export default function Sessions() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <span className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-blue-100 text-blue-700">
+          <span className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-brand-subtle text-brand">
             <FiCalendar />
           </span>
           Sessions
         </h1>
         {activeTab === 'upcoming' && canManageSessions && (
-          <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-sm">New session</button>
+          <button onClick={openCreate} className="px-4 py-2 btn-brand text-white rounded-xl hover:opacity-95 shadow-sm">New session</button>
         )}
       </div>
       {err && <p className="text-red-600 mb-2">{err}</p>}
@@ -197,7 +200,7 @@ export default function Sessions() {
         <button
           type="button"
           onClick={() => setActiveTab('upcoming')}
-          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'upcoming' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'upcoming' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-brand' : 'text-gray-600 hover:text-gray-900'}`}
         >
           <FiClock className="text-base" />
           Upcoming
@@ -205,7 +208,7 @@ export default function Sessions() {
         <button
           type="button"
           onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'history' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'history' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-brand' : 'text-gray-600 hover:text-gray-900'}`}
         >
           <FiCheckCircle className="text-base" />
           History ({historySessions.length})
@@ -246,10 +249,10 @@ export default function Sessions() {
                     )}
                   </td>
                   <td className="p-3">
-                    <Link to={`/sessions/${s.id}/attendance`} className="inline-flex items-center gap-1 text-indigo-600 mr-3 hover:underline"><FiCheckCircle />Attendance</Link>
+                    <Link to={paths.sessionAttendance(s.id)} className="inline-flex items-center gap-1 text-brand mr-3 hover:underline"><FiCheckCircle />Attendance</Link>
                     {canManageSessions && (
                       <>
-                        <button type="button" onClick={() => openEdit(s)} className="inline-flex items-center gap-1 text-blue-600 mr-3 hover:underline"><FiEdit2 />Edit</button>
+                        <button type="button" onClick={() => openEdit(s)} className="inline-flex items-center gap-1 text-brand mr-3 hover:underline"><FiEdit2 />Edit</button>
                         <button type="button" onClick={() => handleDelete(s.id)} className="inline-flex items-center gap-1 text-red-600 hover:underline"><FiTrash2 />Delete</button>
                       </>
                     )}
@@ -271,7 +274,7 @@ export default function Sessions() {
           {shownSessions.map(s => {
             const time = formatRowTime(s)
             return (
-              <div key={s.id} className="bg-white rounded-2xl border p-4 shadow-sm border-blue-100">
+              <div key={s.id} className="bg-white rounded-2xl border p-4 shadow-sm border-brand-subtle">
                 <div className="font-semibold">{s.title}</div>
                 <div className="text-sm text-gray-600 mt-1">
                   {new Date(s.date).toLocaleDateString()} at {time} · {s.type}
@@ -287,9 +290,9 @@ export default function Sessions() {
                   )}
                 </div>
                 <div className="flex gap-2 pt-3">
-                  <Link to={`/sessions/${s.id}/attendance`} className="flex-1 px-3 py-2 rounded-xl border border-indigo-100 text-indigo-700 bg-indigo-50 text-center inline-flex items-center justify-center gap-1"><FiCheckCircle />Attendance</Link>
+                  <Link to={paths.sessionAttendance(s.id)} className="flex-1 px-3 py-2 rounded-xl border border-brand-subtle text-brand bg-brand-subtle text-center inline-flex items-center justify-center gap-1"><FiCheckCircle />Attendance</Link>
                   {canManageSessions && (
-                    <button type="button" onClick={() => openEdit(s)} className="flex-1 px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 inline-flex items-center justify-center gap-1"><FiEdit2 />Edit</button>
+                    <button type="button" onClick={() => openEdit(s)} className="flex-1 px-3 py-2 rounded-xl border border-brand-subtle text-brand bg-brand-subtle inline-flex items-center justify-center gap-1"><FiEdit2 />Edit</button>
                   )}
                 </div>
                 {canManageSessions && (
@@ -360,7 +363,7 @@ export default function Sessions() {
                 </div>
               )}
               <div className="flex gap-2 pt-2">
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">{modal === 'create' ? 'Create' : 'Save'}</button>
+                <button type="submit" className="px-4 py-2 btn-brand text-white rounded-lg hover:opacity-95">{modal === 'create' ? 'Create' : 'Save'}</button>
                 <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
               </div>
             </form>

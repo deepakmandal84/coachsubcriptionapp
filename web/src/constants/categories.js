@@ -1,3 +1,5 @@
+import { DEFAULT_PRIMARY } from './theme'
+
 // Predefined categories for package/academy type. Must match backend ThemeHelper.
 export const PACKAGE_CATEGORIES = [
   'Cricket',
@@ -14,6 +16,6 @@ export const CATEGORY_THEME_COLORS = {
 }
 
 export function getThemeColorForCategory(category) {
-  if (!category) return '#2563eb'
-  return CATEGORY_THEME_COLORS[category] || '#2563eb'
+  if (!category) return DEFAULT_PRIMARY
+  return CATEGORY_THEME_COLORS[category] || DEFAULT_PRIMARY
 }

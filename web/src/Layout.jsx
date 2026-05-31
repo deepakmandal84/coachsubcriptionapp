@@ -1,172 +1,201 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
+import {
+  FiBarChart2,
+  FiBox,
+  FiCalendar,
+  FiCreditCard,
+  FiGrid,
+  FiLogOut,
+  FiMenu,
+  FiSettings,
+  FiShield,
+  FiUsers,
+  FiX,
+} from 'react-icons/fi'
 import { useAuth } from './AuthContext'
 import { adminApi } from './api'
-import { FiMenu, FiX } from 'react-icons/fi'
+import { setActingTenantId, useAppPaths } from './hooks/useAppPaths'
+import { useBrandTheme } from './hooks/useBrandTheme'
+import AcademyContextBar from './components/AcademyContextBar'
+import Button from './components/ui/Button'
+
+const ICONS = {
+  admin: FiShield,
+  dashboard: FiGrid,
+  students: FiUsers,
+  packages: FiBox,
+  subscriptions: FiCreditCard,
+  sessions: FiCalendar,
+  settings: FiSettings,
+  insights: FiBarChart2,
+}
+
+function NavItem({ to, label, iconKey, end, onNavigate }) {
+  const Icon = ICONS[iconKey] || FiGrid
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={onNavigate}
+      className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}
+    >
+      <Icon className="text-lg shrink-0 opacity-80" />
+      <span className="truncate">{label}</span>
+    </NavLink>
+  )
+}
 
 export default function Layout() {
   const { coach, logout } = useAuth()
-  const primary = coach?.primaryColor || '#2563eb'
-  const [menuOpen, setMenuOpen] = useState(false)
+  const { tenantId } = useParams()
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const paths = useAppPaths()
+  useBrandTheme(coach?.primaryColor)
+
+  const [mobileNav, setMobileNav] = useState(false)
   const [adminAcademies, setAdminAcademies] = useState([])
-  const actingTenantId = typeof localStorage !== 'undefined' ? localStorage.getItem('actingTenantId') : ''
+
+  const isAdmin = coach?.role === 'Admin'
+  const isStaffCoach = coach?.role === 'Coach' && !!coach?.clubTenantId
+  const inAcademyContext = isAdmin && paths.isAdminManagingAcademy
 
   useEffect(() => {
-    if (coach?.role !== 'Admin') return
-    adminApi.dashboard().then((d) => setAdminAcademies(d.coaches ?? [])).catch(() => setAdminAcademies([]))
-  }, [coach?.role])
+    if (!isAdmin) return
+    adminApi.listAcademies().then((list) => setAdminAcademies(list ?? [])).catch(() => setAdminAcademies([]))
+  }, [isAdmin])
 
-  const isStaffCoach = coach?.role === 'Coach' && !!coach?.clubTenantId
+  useEffect(() => {
+    if (isAdmin && tenantId) setActingTenantId(tenantId)
+  }, [isAdmin, tenantId])
 
-  const navLinks = useMemo(() => {
-    return [
-      coach?.role === 'Admin' ? { to: '/admin', label: 'Super Admin', show: true } : { show: false },
-      { to: '/', label: 'Dashboard', show: !isStaffCoach },
-      { to: '/students', label: 'Students', show: true },
-      { to: '/packages', label: 'Packages', show: !isStaffCoach },
-      { to: '/subscriptions', label: 'Subscriptions', show: !isStaffCoach },
-      { to: '/sessions', label: 'Sessions', show: true },
-      { to: '/settings', label: 'Settings', show: !isStaffCoach },
-    ].filter(x => x.show !== false)
-  }, [coach?.role, isStaffCoach])
+  useEffect(() => setMobileNav(false), [pathname])
 
-  function linkClass({ isActive }) {
-    return `px-3 py-2 rounded ${isActive ? 'bg-gray-100 font-medium' : 'hover:bg-gray-50'}`
+  const activeAcademy = useMemo(
+    () => adminAcademies.find((c) => c.id === paths.academyId),
+    [adminAcademies, paths.academyId]
+  )
+
+  function switchAcademy(academyOwnerId) {
+    if (!academyOwnerId) {
+      setActingTenantId(null)
+      navigate('/admin')
+      return
+    }
+    setActingTenantId(academyOwnerId)
+    const segment = pathname.split('/').pop() || 'students'
+    const allowed = ['dashboard', 'students', 'packages', 'subscriptions', 'sessions', 'settings']
+    const page = allowed.includes(segment) ? segment : 'students'
+    navigate(`/academies/${academyOwnerId}/${page}`)
   }
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <header className="bg-white border-b shadow-sm sticky top-0 z-40" style={{ borderBottomColor: primary + '20' }}>
-        <div className="max-w-6xl mx-auto px-4 flex items-center justify-between h-14">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setMenuOpen(true)}
-              className="md:hidden inline-flex items-center justify-center p-2 rounded-lg border border-gray-200 bg-white"
-              aria-label="Open menu"
-            >
-              <FiMenu className="text-lg" />
-            </button>
-            {coach?.logoUrl && <img src={coach.logoUrl} alt="" className="h-8" />}
-            <span className="font-semibold text-lg truncate">{coach?.academyName || (coach?.role === 'Admin' ? 'Platform Admin' : 'Coach App')}</span>
-            {coach?.role === 'Admin' && (
-              <div className="hidden lg:flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
-                <label htmlFor="acting-tenant" className="text-xs text-gray-500 whitespace-nowrap">
-                  Manage academy
-                </label>
-                <select
-                  id="acting-tenant"
-                  value={actingTenantId}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    if (v) localStorage.setItem('actingTenantId', v)
-                    else localStorage.removeItem('actingTenantId')
-                    window.location.reload()
-                  }}
-                  className="text-sm border border-gray-200 rounded-lg px-2 py-1 max-w-[200px] bg-white"
-                >
-                  <option value="">— Select —</option>
-                  {adminAcademies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.academyName || c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <nav className="hidden md:flex gap-1">
-              {navLinks.map(l => (
-                <NavLink key={l.to} to={l.to} className={({ isActive }) => linkClass({ isActive })}>
-                  {l.label}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-          <div className="hidden md:flex items-center gap-2">
-            <span className="text-sm text-gray-500">{coach?.email}</span>
-            <button onClick={logout} className="px-3 py-1.5 text-sm rounded border hover:bg-gray-50">Logout</button>
-          </div>
-        </div>
-      </header>
+  const navLinks = useMemo(() => {
+    if (isAdmin && !inAcademyContext) {
+      return [{ to: '/admin', label: 'Academies', iconKey: 'admin', end: true }]
+    }
+    if (isAdmin && inAcademyContext) {
+      return [
+        { to: paths.dashboard, label: 'Dashboard', iconKey: 'dashboard' },
+        { to: paths.students, label: 'Students', iconKey: 'students' },
+        { to: paths.packages, label: 'Packages', iconKey: 'packages' },
+        { to: paths.subscriptions, label: 'Subscriptions', iconKey: 'subscriptions' },
+        { to: `${paths.subscriptions}?tab=insights`, label: 'Insights', iconKey: 'insights' },
+        { to: paths.sessions, label: 'Sessions', iconKey: 'sessions' },
+        { to: paths.settings, label: 'Settings', iconKey: 'settings' },
+      ]
+    }
+    return [
+      { to: '/', label: 'Dashboard', iconKey: 'dashboard', show: !isStaffCoach },
+      { to: '/students', label: 'Students', iconKey: 'students', show: true },
+      { to: '/packages', label: 'Packages', iconKey: 'packages', show: !isStaffCoach },
+      { to: '/subscriptions', label: 'Subscriptions', iconKey: 'subscriptions', show: !isStaffCoach },
+      { to: '/subscriptions?tab=insights', label: 'Insights', iconKey: 'insights', show: !isStaffCoach },
+      { to: '/sessions', label: 'Sessions', iconKey: 'sessions', show: true },
+      { to: '/settings', label: 'Settings', iconKey: 'settings', show: !isStaffCoach },
+    ].filter((x) => x.show !== false)
+  }, [isAdmin, inAcademyContext, isStaffCoach, paths])
 
-      {menuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} />
-          <div
-            className="absolute left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-white shadow-xl"
-            style={{ borderRight: `1px solid ${primary}20` }}
-          >
-            <div className="h-14 flex items-center justify-between px-4 border-b">
-              <span className="font-semibold">{coach?.academyName || 'Menu'}</span>
-              <button
-                type="button"
-                onClick={() => setMenuOpen(false)}
-                className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-200 bg-white"
-                aria-label="Close menu"
-              >
-                <FiX className="text-lg" />
-              </button>
-            </div>
-            <div className="p-4 space-y-2">
-              {coach?.role === 'Admin' && (
-                <div className="mb-4 pb-4 border-b">
-                  <label htmlFor="acting-tenant-m" className="block text-xs text-gray-500 mb-1">
-                    Manage academy
-                  </label>
-                  <select
-                    id="acting-tenant-m"
-                    value={actingTenantId}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      if (v) localStorage.setItem('actingTenantId', v)
-                      else localStorage.removeItem('actingTenantId')
-                      window.location.reload()
-                    }}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-2 bg-white"
-                  >
-                    <option value="">— Select academy —</option>
-                    {adminAcademies.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.academyName || c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {navLinks.map(l => (
-                <NavLink
-                  key={l.to}
-                  to={l.to}
-                  onClick={() => setMenuOpen(false)}
-                  className={({ isActive }) =>
-                    `block px-3 py-2 rounded ${isActive ? 'bg-gray-100 font-medium' : 'hover:bg-gray-50'}`
-                  }
-                >
-                  {l.label}
-                </NavLink>
-              ))}
-              <div className="pt-3 border-t mt-3">
-                <div className="text-sm text-gray-500 mb-2">{coach?.email}</div>
-                <button
-                  type="button"
-                  onClick={() => { setMenuOpen(false); logout(); }}
-                  className="w-full px-3 py-2 text-sm rounded bg-gray-900 text-white hover:bg-gray-800"
-                >
-                  Logout
-                </button>
-              </div>
-            </div>
-          </div>
+  const brandTitle =
+    inAcademyContext && activeAcademy
+      ? activeAcademy.academyName || activeAcademy.name
+      : coach?.academyName || (isAdmin ? 'Coach Subscription' : 'My academy')
+
+  const sidebar = (
+    <aside className="flex flex-col w-64 shrink-0 border-r border-slate-200 bg-white h-full">
+      <div className="h-14 flex items-center gap-2 px-4 border-b border-slate-100 shrink-0">
+        {coach?.logoUrl ? (
+          <img src={coach.logoUrl} alt="" className="h-8 w-8 rounded-lg object-cover" />
+        ) : (
+          <span className="h-8 w-8 rounded-lg btn-brand text-white text-sm font-bold flex items-center justify-center">
+            {brandTitle.charAt(0)}
+          </span>
+        )}
+        <span className="font-semibold text-slate-900 truncate text-sm">{brandTitle}</span>
+      </div>
+      <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
+        {navLinks.map((l) => (
+          <NavItem key={l.to + l.label} {...l} onNavigate={() => setMobileNav(false)} />
+        ))}
+      </nav>
+      <div className="p-3 border-t border-slate-100 shrink-0">
+        <p className="text-xs text-slate-500 truncate px-3 mb-2">{coach?.email}</p>
+        <button
+          type="button"
+          onClick={logout}
+          className="nav-link w-full text-slate-600"
+        >
+          <FiLogOut className="text-lg" />
+          Log out
+        </button>
+      </div>
+    </aside>
+  )
+
+  return (
+    <div className="min-h-screen flex">
+      <div className="hidden lg:flex fixed inset-y-0 left-0 z-30">{sidebar}</div>
+
+      {mobileNav && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setMobileNav(false)} aria-hidden="true" />
+          <div className="relative h-full shadow-xl">{sidebar}</div>
         </div>
       )}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
-        {coach?.role === 'Admin' && !actingTenantId && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3 text-sm">
-            Select an <strong>academy</strong> above to use Students, Packages, Subscriptions, and Sessions for that club. Super Admin tools stay under <strong>Super Admin</strong>.
-          </div>
+
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+        <header className="sticky top-0 z-20 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0">
+          <button
+            type="button"
+            className="lg:hidden p-2 rounded-lg border border-slate-200"
+            onClick={() => setMobileNav(true)}
+            aria-label="Open menu"
+          >
+            <FiMenu />
+          </button>
+          <span className="lg:hidden font-semibold text-slate-900 truncate text-sm flex-1 mx-2">{brandTitle}</span>
+          <span className="hidden lg:block text-sm text-slate-500">
+            {isAdmin && !inAcademyContext ? 'Platform admin' : 'Academy workspace'}
+          </span>
+          <Button variant="ghost" size="sm" className="lg:hidden" onClick={logout}>
+            Log out
+          </Button>
+        </header>
+
+        {isAdmin && (
+          <AcademyContextBar
+            inAcademyContext={inAcademyContext}
+            activeAcademy={activeAcademy}
+            adminAcademies={adminAcademies}
+            academyId={paths.academyId}
+            onSwitchAcademy={switchAcademy}
+          />
         )}
-        <Outlet />
-      </main>
+
+        <main className="flex-1 p-4 sm:p-6 max-w-6xl w-full mx-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

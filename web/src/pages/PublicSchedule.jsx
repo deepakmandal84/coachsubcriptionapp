@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { scheduleApi } from '../api'
 import LinkShare from '../components/LinkShare'
+import { resolvePrimaryColor } from '../constants/theme'
 
 /** Avoid shadowing real app routes if someone uses these as slugs. */
 const RESERVED_SCHEDULE_KEYS = new Set([
@@ -110,7 +111,7 @@ export default function PublicSchedule() {
   }
   if (!view) return <div className="min-h-screen flex items-center justify-center p-4">Loading...</div>
 
-  const primary = view.primaryColor || '#2563eb'
+  const primary = resolvePrimaryColor(view.primaryColor)
   const shareUrl = typeof window !== 'undefined' ? window.location.href : ''
 
   return (

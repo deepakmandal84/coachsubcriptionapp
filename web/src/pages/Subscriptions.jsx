@@ -1,19 +1,42 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { subscriptionsApi, studentsApi, packagesApi, messageLogsApi } from '../api'
-import { FiBell, FiClock, FiCreditCard, FiLink2, FiPlus, FiX } from 'react-icons/fi'
-import { FaHistory } from 'react-icons/fa'
+import { FiBarChart2, FiClock, FiCreditCard, FiPlus } from 'react-icons/fi'
 import LinkShare from '../components/LinkShare'
+import SubscriptionMonthlyInsights from '../components/SubscriptionMonthlyInsights'
+import SubscriptionRowActions from '../components/SubscriptionRowActions'
+import PageHeader from '../components/ui/PageHeader'
+import Tabs from '../components/ui/Tabs'
+import Badge from '../components/ui/Badge'
+import Button from '../components/ui/Button'
+import Card from '../components/ui/Card'
+import Alert from '../components/ui/Alert'
+import EmptyState from '../components/ui/EmptyState'
+import Modal from '../components/ui/Modal'
+import Input from '../components/ui/Input'
+import Select from '../components/ui/Select'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { TableSkeleton } from '../components/ui/Skeleton'
+import { useToast } from '../context/ToastContext'
+import { formatError } from '../utils/formatError'
 
 const REMINDER_TEMPLATES = 'PaymentDue,PackageExpiring,RequestRenewal'
 
 export default function Subscriptions() {
-  const [activeTab, setActiveTab] = useState('subscriptions')
+  const toast = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = searchParams.get('tab') || 'subscriptions'
+  const setActiveTab = (tab) => {
+    if (tab === 'subscriptions') setSearchParams({})
+    else setSearchParams({ tab })
+  }
   const [list, setList] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [paymentFilter, setPaymentFilter] = useState('all')
   const [students, setStudents] = useState([])
   const [packages, setPackages] = useState([])
   const [reminderHistory, setReminderHistory] = useState([])
   const [err, setErr] = useState('')
-  const [successMsg, setSuccessMsg] = useState('')
   const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState(null)
   const [form, setForm] = useState({ studentId: '', packageId: '', startDate: new Date().toISOString().slice(0, 10), paymentStatus: 'Due', paymentMethod: 'Cash' })
@@ -22,16 +45,33 @@ export default function Subscriptions() {
   const [renewalTx, setRenewalTx] = useState([])
 
   function load() {
-    subscriptionsApi.list().then(setList).catch(e => setErr(e instanceof Error ? e.message : 'Failed'))
+    setLoading(true)
+    subscriptionsApi
+      .list()
+      .then(setList)
+      .catch((e) => setErr(formatError(e)))
+      .finally(() => setLoading(false))
     studentsApi.list().then(setStudents).catch(() => {})
     packagesApi.list().then(setPackages).catch(() => {})
   }
 
+  const dueCount = useMemo(() => list.filter((s) => s.paymentStatus === 'Due').length, [list])
+  const filteredList = useMemo(
+    () => (paymentFilter === 'due' ? list.filter((s) => s.paymentStatus === 'Due') : list),
+    [list, paymentFilter]
+  )
+
   function loadReminderHistory() {
-    messageLogsApi.list({ template: REMINDER_TEMPLATES }).then(setReminderHistory).catch(e => setErr(e instanceof Error ? e.message : 'Failed'))
+    messageLogsApi
+      .list({ template: REMINDER_TEMPLATES })
+      .then(setReminderHistory)
+      .catch((e) => setErr(formatError(e)))
   }
 
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (searchParams.get('filter') === 'due') setPaymentFilter('due')
+  }, [searchParams])
   useEffect(() => { if (activeTab === 'history') loadReminderHistory() }, [activeTab])
 
   function openCreate() {
@@ -50,8 +90,11 @@ export default function Subscriptions() {
         paymentMethod: form.paymentMethod,
       })
       setModal(null)
+      toast.success('Subscription created')
       load()
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+    } catch (e) {
+      setErr(formatError(e))
+    }
   }
 
   function openPayment(sub) {
@@ -67,19 +110,23 @@ export default function Subscriptions() {
       await subscriptionsApi.recordPayment(selected.id, paymentForm)
       setModal(null)
       setSelected(null)
+      toast.success('Payment recorded')
       load()
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+    } catch (e) {
+      setErr(formatError(e))
+    }
   }
 
   async function sendReminder(sub) {
     try {
       setErr('')
-      setSuccessMsg('')
       await subscriptionsApi.sendReminder(sub.id)
+      toast.success(`Reminder sent to ${sub.studentName}`)
       load()
       if (activeTab === 'history') loadReminderHistory()
-      setModal('reminderSuccess')
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+    } catch (e) {
+      setErr(formatError(e))
+    }
   }
 
   async function getParentLink(sub) {
@@ -88,7 +135,9 @@ export default function Subscriptions() {
       setParentLinkUrl(res.url)
       setSelected(sub)
       setModal('link')
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+    } catch (e) {
+      setErr(formatError(e))
+    }
   }
 
   function openConfirmRenewal(sub) {
@@ -100,12 +149,11 @@ export default function Subscriptions() {
     if (!selected) return
     try {
       await subscriptionsApi.confirmRenewal(selected.id)
-      setSuccessMsg(`Renewal confirmed for ${selected.studentName}.`)
+      toast.success(`Renewal confirmed for ${selected.studentName}`)
       setModal(null)
       load()
-      setTimeout(() => setSuccessMsg(''), 2500)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed')
+      setErr(formatError(e))
     }
   }
 
@@ -116,388 +164,366 @@ export default function Subscriptions() {
       setRenewalTx(rows || [])
       setModal('renewalHistory')
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed')
+      setErr(formatError(e))
     }
   }
 
+  const tabItems = [
+    { id: 'subscriptions', label: 'All subscriptions', icon: FiCreditCard, badge: dueCount },
+    { id: 'insights', label: 'Monthly insights', icon: FiBarChart2 },
+    { id: 'history', label: 'Reminders', icon: FiClock },
+  ]
+
   return (
     <div>
-      <div className="flex items-start justify-between gap-3 mb-6">
-        <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2 min-w-0 pr-2">
-          <span className="inline-flex shrink-0 items-center justify-center h-9 w-9 rounded-xl bg-violet-100 text-violet-700">
-            <FiCreditCard />
-          </span>
-          <span className="truncate">Subscriptions</span>
-        </h1>
-        {activeTab === 'subscriptions' && (
-          <button
-            type="button"
-            onClick={openCreate}
-            title="New subscription"
-            aria-label="Add new subscription"
-            className="shrink-0 inline-flex items-center justify-center gap-2 rounded-full bg-blue-600 text-white shadow-md hover:bg-blue-700 active:scale-[0.98] transition h-11 w-11 md:h-auto md:w-auto md:px-4 md:py-2.5 md:rounded-xl md:shadow-sm md:active:scale-100"
-          >
-            <FiPlus className="text-xl md:text-lg" strokeWidth={2.25} />
-            <span className="hidden md:inline font-medium text-sm">New subscription</span>
-          </button>
-        )}
+      <PageHeader
+        icon={FiCreditCard}
+        title="Subscriptions"
+        description="Manage packages sold to students, payments, and renewal requests."
+        action={
+          activeTab === 'subscriptions' ? (
+            <Button onClick={openCreate}>
+              <FiPlus />
+              New subscription
+            </Button>
+          ) : null
+        }
+      />
+
+      <div className="mb-6">
+        <Tabs tabs={tabItems} active={activeTab} onChange={setActiveTab} />
       </div>
 
-      <div className="flex gap-1 border-b border-gray-200 mb-4">
-        <button
-          onClick={() => setActiveTab('subscriptions')}
-          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'subscriptions' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-        >
-          <FiCreditCard />
-          Subscriptions
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'history' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-        >
-          <FiClock />
-          Reminder history
-        </button>
-      </div>
-
-      {err && <p className="text-red-600 mb-2">{err}</p>}
-      {successMsg && <p className="text-green-600 mb-2">{successMsg}</p>}
-
-      {modal === 'reminderSuccess' && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl text-center" onClick={e => e.stopPropagation()}>
-            <p className="text-green-600 font-semibold text-lg mb-2">Email sent successfully</p>
-            <p className="text-gray-600 text-sm mb-4">The reminder has been sent to the student.</p>
-            <button type="button" onClick={() => setModal(null)} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">OK</button>
-          </div>
+      {err && (
+        <div className="mb-4">
+          <Alert variant="error" onDismiss={() => setErr('')}>
+            {err}
+          </Alert>
         </div>
       )}
 
       {activeTab === 'subscriptions' && (
-        <div className="space-y-3">
-          <div className="hidden md:block bg-white rounded-lg border overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left p-3">Student</th>
-                  <th className="text-left p-3">Package</th>
-                  <th className="text-left p-3">Expiry</th>
-                  <th className="text-left p-3">Remaining</th>
-                  <th className="text-left p-3">Payment</th>
-                  <th className="p-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map(s => (
-                  <tr key={s.id} className="border-b last:border-0">
-                    <td className="p-3">{s.studentName}</td>
-                    <td className="p-3">{s.packageName}</td>
-                    <td className="p-3">{new Date(s.expiryDate).toLocaleDateString()}</td>
-                    <td className="p-3">{s.remainingSessions ?? '–'}</td>
-                    <td className="p-3">
-                      <span className={s.paymentStatus === 'Due' ? 'text-amber-600 font-medium' : ''}>{s.paymentStatus}</span>
-                      {s.paymentStatus === 'Due' && (
-                        <button onClick={() => openPayment(s)} className="ml-2 text-blue-600 text-sm hover:underline inline-flex items-center gap-1"><FiCreditCard />Mark paid</button>
-                      )}
-                    </td>
-                    <td className="p-3">
-                      <button onClick={() => sendReminder(s)} className="text-blue-600 text-sm mr-3 hover:underline inline-flex items-center gap-1"><FiBell />Remind</button>
-                      <button onClick={() => getParentLink(s)} className="text-blue-600 text-sm hover:underline inline-flex items-center gap-1"><FiLink2 />Parent link</button>
-                      <button
-                        onClick={() => openConfirmRenewal(s)}
-                        className={`ml-3 text-sm inline-flex items-center gap-1 ${s.hasPendingRenewal ? 'text-amber-600 hover:underline font-medium' : 'text-gray-400'}`}
-                        title={s.hasPendingRenewal ? 'Pending renewal request' : 'No pending renewal request'}
-                      >
-                        <FiBell />
-                        Renewed?
-                      </button>
-                      <button onClick={() => openRenewalHistory(s)} className="ml-3 text-indigo-600 text-sm hover:underline inline-flex items-center gap-1"><FaHistory />History</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="md:hidden space-y-3">
-            {list.map(s => (
-              <div key={s.id} className="bg-white rounded-2xl border p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold">{s.studentName}</div>
-                    <div className="text-sm text-gray-600 mt-1">{s.packageName}</div>
-                  </div>
-                  <div className="text-sm">
-                    {s.paymentStatus === 'Due' ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-100 font-medium">
-                        Due
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-50 text-green-800 border border-green-100 font-medium">
-                        Paid
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="text-sm text-gray-600 mt-2 space-y-1">
-                  <div>Expiry: {new Date(s.expiryDate).toLocaleDateString()}</div>
-                  <div>Remaining: {s.remainingSessions ?? '–'}</div>
-                </div>
-                <div className="flex flex-wrap gap-2 pt-3">
-                  {s.paymentStatus === 'Due' && (
-                    <button onClick={() => openPayment(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm inline-flex items-center justify-center gap-1">
-                      <FiCreditCard />
-                      Mark paid
-                    </button>
-                  )}
-                  <button onClick={() => sendReminder(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm inline-flex items-center justify-center gap-1">
-                    <FiBell />
-                    Remind
-                  </button>
-                  <button onClick={() => getParentLink(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 text-sm inline-flex items-center justify-center gap-1">
-                    <FiLink2 />
-                    Parent link
-                  </button>
-                  <button
-                    onClick={() => openConfirmRenewal(s)}
-                    className={`flex-1 min-w-[140px] px-3 py-2 rounded-xl border text-sm inline-flex items-center justify-center gap-1 ${s.hasPendingRenewal ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-gray-200 text-gray-500 bg-gray-50'}`}
-                  >
-                    <FiBell />
-                    Renewed?
-                  </button>
-                  <button onClick={() => openRenewalHistory(s)} className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-indigo-100 text-indigo-700 bg-indigo-50 text-sm inline-flex items-center justify-center gap-1">
-                    <FaHistory />
-                    History
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'history' && (
-        <div className="space-y-3">
-          <div className="hidden md:block bg-white rounded-lg border overflow-hidden">
-            <div className="p-3 border-b bg-gray-50 text-sm text-gray-600">
-              Emails and WhatsApp messages sent for payment due, package expiring, and parent renewal requests.
-            </div>
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left p-3">Sent at</th>
-                  <th className="text-left p-3">Recipient</th>
-                  <th className="text-left p-3">Channel</th>
-                  <th className="text-left p-3">Type</th>
-                  <th className="text-left p-3">Status</th>
-                  <th className="text-left p-3">Error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reminderHistory.length === 0 && (
-                  <tr><td colSpan={6} className="p-6 text-center text-gray-500">No reminder messages yet. Send one from the Subscriptions tab.</td></tr>
-                )}
-                {reminderHistory.map(log => (
-                  <tr key={log.id} className="border-b last:border-0">
-                    <td className="p-3 text-sm">{new Date(log.sentAt).toLocaleString()}</td>
-                    <td className="p-3">{log.recipient}</td>
-                    <td className="p-3">{log.channel}</td>
-                    <td className="p-3 text-sm">{log.templateId}</td>
-                    <td className="p-3">
-                      <span className={log.status === 'Sent' ? 'text-green-600' : 'text-red-600'}>{log.status}</span>
-                    </td>
-                    <td className="p-3 text-sm text-red-600">{log.errorMessage ?? '–'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="md:hidden space-y-3">
-            {reminderHistory.length === 0 ? (
-              <div className="bg-white rounded-2xl border p-4 text-center text-gray-500">
-                No reminder messages yet.
-              </div>
-            ) : (
-              reminderHistory.map(log => (
-                <div key={log.id} className="bg-white rounded-2xl border p-4 shadow-sm">
-                  <div className="text-sm text-gray-500">{new Date(log.sentAt).toLocaleString()}</div>
-                  <div className="font-semibold mt-1">{log.recipient}</div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    {log.channel} · {log.templateId}
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className={log.status === 'Sent' ? 'text-green-700' : 'text-red-700 font-medium'}>
-                      {log.status}
-                    </span>
-                  </div>
-                  {log.errorMessage && (
-                    <div className="text-xs text-red-600 mt-1">
-                      {log.errorMessage}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {modal === 'create' && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-lg p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-4">New subscription</h2>
-            <form onSubmit={handleCreate} className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Student *</label>
-                <select value={form.studentId} onChange={e => setForm(f => ({ ...f, studentId: e.target.value }))} required className="w-full border rounded px-3 py-2">
-                  {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Package *</label>
-                <select value={form.packageId} onChange={e => setForm(f => ({ ...f, packageId: e.target.value }))} required className="w-full border rounded px-3 py-2">
-                  {packages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Start date *</label>
-                <input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} required className="w-full border rounded px-3 py-2" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Payment status</label>
-                  <select value={form.paymentStatus} onChange={e => setForm(f => ({ ...f, paymentStatus: e.target.value }))} className="w-full border rounded px-3 py-2">
-                    <option value="Due">Due</option>
-                    <option value="Paid">Paid</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Payment method</label>
-                  <select value={form.paymentMethod} onChange={e => setForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded px-3 py-2">
-                    <option value="Cash">Cash</option>
-                    <option value="Zelle">Zelle</option>
-                    <option value="Venmo">Venmo</option>
-                    <option value="Card">Card</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Create</button>
-                <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {modal === 'payment' && selected && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-lg p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-4">Record payment</h2>
-            <form onSubmit={handlePayment} className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Amount *</label>
-                <input type="number" step="0.01" min="0.01" value={paymentForm.amount} onChange={e => setPaymentForm(f => ({ ...f, amount: Number(e.target.value) }))} required className="w-full border rounded px-3 py-2" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Method</label>
-                <select value={paymentForm.method} onChange={e => setPaymentForm(f => ({ ...f, method: e.target.value }))} className="w-full border rounded px-3 py-2">
-                  <option value="Cash">Cash</option>
-                  <option value="Zelle">Zelle</option>
-                  <option value="Venmo">Venmo</option>
-                  <option value="Card">Card</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Notes</label>
-                <input value={paymentForm.notes} onChange={e => setPaymentForm(f => ({ ...f, notes: e.target.value }))} className="w-full border rounded px-3 py-2" />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
-                <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {modal === 'link' && parentLinkUrl && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-lg p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-2">Parent portal link</h2>
-            <p className="text-sm text-gray-500 mb-2">Share this link with the parent (read-only view + request renewal).</p>
-            <input readOnly value={parentLinkUrl} className="w-full border rounded px-3 py-2 text-sm bg-gray-50" />
-            <div className="mt-3">
-              <LinkShare
-                url={parentLinkUrl}
-                title="Parent portal link"
-                text="Use this parent portal link for schedule and renewal updates."
-                variant="compact"
-              />
-            </div>
-            <button type="button" onClick={() => setModal(null)} className="mt-3 px-4 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2">
-              <FiX />
-              Close
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setPaymentFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                paymentFilter === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-slate-600'
+              }`}
+            >
+              All ({list.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentFilter('due')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                paymentFilter === 'due' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white border-slate-200 text-slate-600'
+              }`}
+            >
+              Payment due ({dueCount})
             </button>
           </div>
-        </div>
-      )}
 
-      {modal === 'confirmRenewal' && selected && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-2">Confirm renewal</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Confirm user <span className="font-medium">{selected.studentName}</span> has renewed?
-            </p>
-            <div className="flex gap-2">
-              <button type="button" onClick={confirmRenewal} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-                Yes, renewed
-              </button>
-              <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded hover:bg-gray-50">
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {modal === 'renewalHistory' && selected && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-lg p-6 max-w-xl w-full shadow-xl" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-2">Renewal transactions</h2>
-            <p className="text-sm text-gray-500 mb-3">{selected.studentName}</p>
-            <div className="max-h-80 overflow-auto border rounded">
-              {renewalTx.length === 0 ? (
-                <div className="p-4 text-sm text-gray-500">No renewal transactions yet.</div>
-              ) : (
+          {loading ? (
+            <TableSkeleton rows={6} cols={5} />
+          ) : filteredList.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon={FiCreditCard}
+                title={paymentFilter === 'due' ? 'No payments due' : 'No subscriptions yet'}
+                description={
+                  paymentFilter === 'due'
+                    ? 'All caught up — no outstanding payments.'
+                    : 'Create a subscription when a student buys a package.'
+                }
+                actionLabel={paymentFilter === 'all' ? 'New subscription' : undefined}
+                onAction={paymentFilter === 'all' ? openCreate : undefined}
+              />
+            </Card>
+          ) : (
+            <>
+              <Card padding={false} className="hidden md:block overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="text-left p-2">Requested</th>
-                      <th className="text-left p-2">Confirmed</th>
-                      <th className="text-left p-2">Package</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Student</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Package</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Expiry</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Remaining</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Payment</th>
+                      <th className="text-right p-3 font-medium text-slate-600">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {renewalTx.map(r => (
-                      <tr key={r.id} className="border-b last:border-0">
-                        <td className="p-2">{new Date(r.requestedAt).toLocaleString()}</td>
-                        <td className="p-2">{new Date(r.confirmedAt).toLocaleString()}</td>
-                        <td className="p-2">{r.packageName ?? '—'}</td>
+                    {filteredList.map((s) => (
+                      <tr key={s.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
+                        <td className="p-3 font-medium text-slate-900">{s.studentName}</td>
+                        <td className="p-3 text-slate-600">{s.packageName}</td>
+                        <td className="p-3 text-slate-600">{new Date(s.expiryDate).toLocaleDateString()}</td>
+                        <td className="p-3 text-slate-600">{s.remainingSessions ?? '–'}</td>
+                        <td className="p-3">
+                          <Badge variant={s.paymentStatus === 'Due' ? 'warning' : 'success'}>{s.paymentStatus}</Badge>
+                          {s.hasPendingRenewal && (
+                            <Badge variant="info" className="ml-1">
+                              Renewal
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <SubscriptionRowActions
+                            sub={s}
+                            onMarkPaid={() => openPayment(s)}
+                            onRemind={() => sendReminder(s)}
+                            onParentLink={() => getParentLink(s)}
+                            onConfirmRenewal={() => openConfirmRenewal(s)}
+                            onRenewalHistory={() => openRenewalHistory(s)}
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              )}
-            </div>
-            <button type="button" onClick={() => setModal(null)} className="mt-3 px-4 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2">
-              <FiX />
-              Close
-            </button>
-          </div>
+              </Card>
+
+              <div className="md:hidden space-y-3">
+                {filteredList.map((s) => (
+                  <Card key={s.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-slate-900">{s.studentName}</div>
+                        <div className="text-sm text-slate-500 mt-0.5">{s.packageName}</div>
+                      </div>
+                      <Badge variant={s.paymentStatus === 'Due' ? 'warning' : 'success'}>{s.paymentStatus}</Badge>
+                    </div>
+                    <div className="text-sm text-slate-600 mt-3 space-y-1">
+                      <div>Expires {new Date(s.expiryDate).toLocaleDateString()}</div>
+                      <div>Sessions left: {s.remainingSessions ?? '–'}</div>
+                    </div>
+                    <SubscriptionRowActions
+                      compact
+                      sub={s}
+                      onMarkPaid={() => openPayment(s)}
+                      onRemind={() => sendReminder(s)}
+                      onParentLink={() => getParentLink(s)}
+                      onConfirmRenewal={() => openConfirmRenewal(s)}
+                      onRenewalHistory={() => openRenewalHistory(s)}
+                    />
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
         </div>
+      )}
+
+      {activeTab === 'insights' && <SubscriptionMonthlyInsights />}
+
+      {activeTab === 'history' && (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Emails and WhatsApp for payment due, expiring packages, and renewal requests.
+          </p>
+          {reminderHistory.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon={FiClock}
+                title="No reminders sent yet"
+                description="Send a reminder from the All subscriptions tab when payment is due."
+              />
+            </Card>
+          ) : (
+            <>
+              <Card padding={false} className="hidden md:block overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="text-left p-3 font-medium text-slate-600">Sent at</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Recipient</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Channel</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Type</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Status</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reminderHistory.map((log) => (
+                      <tr key={log.id} className="border-b border-slate-100 last:border-0">
+                        <td className="p-3 text-slate-600">{new Date(log.sentAt).toLocaleString()}</td>
+                        <td className="p-3 font-medium text-slate-900">{log.recipient}</td>
+                        <td className="p-3">{log.channel}</td>
+                        <td className="p-3 text-slate-600">{log.templateId}</td>
+                        <td className="p-3">
+                          <Badge variant={log.status === 'Sent' ? 'success' : 'danger'}>{log.status}</Badge>
+                        </td>
+                        <td className="p-3 text-sm text-red-600">{log.errorMessage ?? '–'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+              <div className="md:hidden space-y-3">
+                {reminderHistory.map((log) => (
+                  <Card key={log.id}>
+                    <div className="text-sm text-slate-500">{new Date(log.sentAt).toLocaleString()}</div>
+                    <div className="font-semibold text-slate-900 mt-1">{log.recipient}</div>
+                    <div className="text-sm text-slate-600 mt-1">
+                      {log.channel} · {log.templateId}
+                    </div>
+                    <Badge variant={log.status === 'Sent' ? 'success' : 'danger'} className="mt-2">
+                      {log.status}
+                    </Badge>
+                    {log.errorMessage && <p className="text-xs text-red-600 mt-2">{log.errorMessage}</p>}
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {modal === 'create' && (
+        <Modal
+          title="New subscription"
+          onClose={() => setModal(null)}
+          footer={
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" onClick={() => setModal(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" form="sub-create-form">
+                Create
+              </Button>
+            </div>
+          }
+        >
+          <form id="sub-create-form" onSubmit={handleCreate} className="space-y-3">
+            <Select label="Student *" value={form.studentId} onChange={(e) => setForm((f) => ({ ...f, studentId: e.target.value }))} required>
+              {students.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            <Select label="Package *" value={form.packageId} onChange={(e) => setForm((f) => ({ ...f, packageId: e.target.value }))} required>
+              {packages.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+            <Input label="Start date *" type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} required />
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Payment status" value={form.paymentStatus} onChange={(e) => setForm((f) => ({ ...f, paymentStatus: e.target.value }))}>
+                <option value="Due">Due</option>
+                <option value="Paid">Paid</option>
+              </Select>
+              <Select label="Method" value={form.paymentMethod} onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))}>
+                <option value="Cash">Cash</option>
+                <option value="Zelle">Zelle</option>
+                <option value="Venmo">Venmo</option>
+                <option value="Card">Card</option>
+              </Select>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {modal === 'payment' && selected && (
+        <Modal
+          title={`Record payment — ${selected.studentName}`}
+          onClose={() => setModal(null)}
+          footer={
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" onClick={() => setModal(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" form="sub-payment-form">
+                Save
+              </Button>
+            </div>
+          }
+        >
+          <form id="sub-payment-form" onSubmit={handlePayment} className="space-y-3">
+            <Input
+              label="Amount *"
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={paymentForm.amount}
+              onChange={(e) => setPaymentForm((f) => ({ ...f, amount: Number(e.target.value) }))}
+              required
+            />
+            <Select label="Method" value={paymentForm.method} onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}>
+              <option value="Cash">Cash</option>
+              <option value="Zelle">Zelle</option>
+              <option value="Venmo">Venmo</option>
+              <option value="Card">Card</option>
+            </Select>
+            <Input label="Notes" value={paymentForm.notes} onChange={(e) => setPaymentForm((f) => ({ ...f, notes: e.target.value }))} />
+          </form>
+        </Modal>
+      )}
+
+      {modal === 'link' && parentLinkUrl && (
+        <Modal
+          title="Parent portal link"
+          onClose={() => setModal(null)}
+          footer={
+            <Button variant="secondary" onClick={() => setModal(null)}>
+              Close
+            </Button>
+          }
+        >
+          <p className="text-sm text-slate-600 mb-3">Share with the parent for read-only schedule and renewal requests.</p>
+          <Input readOnly value={parentLinkUrl} className="mb-3" />
+          <LinkShare
+            url={parentLinkUrl}
+            title="Parent portal link"
+            text="Use this parent portal link for schedule and renewal updates."
+            variant="compact"
+          />
+        </Modal>
+      )}
+
+      <ConfirmDialog
+        open={modal === 'confirmRenewal' && !!selected}
+        title="Confirm renewal"
+        description={selected ? `Confirm that ${selected.studentName} has renewed their package?` : ''}
+        confirmLabel="Yes, renewed"
+        variant="primary"
+        onConfirm={confirmRenewal}
+        onCancel={() => setModal(null)}
+      />
+
+      {modal === 'renewalHistory' && selected && (
+        <Modal wide title="Renewal history" onClose={() => setModal(null)} footer={<Button variant="secondary" onClick={() => setModal(null)}>Close</Button>}>
+          <p className="text-sm text-slate-600 mb-3">{selected.studentName}</p>
+          {renewalTx.length === 0 ? (
+            <p className="text-sm text-slate-500 py-4">No renewal transactions yet.</p>
+          ) : (
+            <div className="overflow-auto border border-slate-200 rounded-lg max-h-80">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="text-left p-2 font-medium text-slate-600">Requested</th>
+                    <th className="text-left p-2 font-medium text-slate-600">Confirmed</th>
+                    <th className="text-left p-2 font-medium text-slate-600">Package</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {renewalTx.map((r) => (
+                    <tr key={r.id} className="border-b border-slate-100 last:border-0">
+                      <td className="p-2">{new Date(r.requestedAt).toLocaleString()}</td>
+                      <td className="p-2">{new Date(r.confirmedAt).toLocaleString()}</td>
+                      <td className="p-2">{r.packageName ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Modal>
       )}
     </div>
   )

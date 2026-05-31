@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../AuthContext'
 import { coachApi } from '../api'
 import { PACKAGE_CATEGORIES, getThemeColorForCategory } from '../constants/categories'
+import { DEFAULT_PRIMARY, resolvePrimaryColor } from '../constants/theme'
 import { FaEnvelope, FaInstagram, FaWhatsapp } from 'react-icons/fa'
 import { FiCopy, FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi'
 
@@ -23,7 +24,7 @@ export default function Settings() {
     academyName: coach?.academyName ?? '',
     academyType: coach?.academyType ?? '',
     academyTypeOther: '',
-    primaryColor: coach?.primaryColor ?? '#2563eb',
+    primaryColor: resolvePrimaryColor(coach?.primaryColor),
   })
   const [logoFile, setLogoFile] = useState(null)
   const [err, setErr] = useState('')
@@ -64,7 +65,7 @@ export default function Settings() {
         academyName: coach.academyName ?? '',
         academyType: isPredefined ? coach.academyType : (coach.academyType ? 'Other' : ''),
         academyTypeOther: isPredefined ? '' : (coach.academyType || ''),
-        primaryColor: coach.primaryColor ?? '#2563eb',
+        primaryColor: resolvePrimaryColor(coach.primaryColor),
       }))
     }
   }, [coach])
@@ -319,7 +320,7 @@ export default function Settings() {
                 title="Share by email"
                 className={scheduleIconBtnClass}
               >
-                <FaEnvelope className="w-4 h-4 text-blue-600" />
+                <FaEnvelope className="w-4 h-4 text-brand" />
               </button>
               <button
                 type="button"
@@ -350,7 +351,7 @@ export default function Settings() {
         )}
         {scheduleMsg && <p className="text-xs text-green-600 mt-2">{scheduleMsg}</p>}
       </div>
-      <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
+      <button type="submit" className="px-4 py-2 btn-brand text-white rounded-lg hover:opacity-95">Save</button>
     </form>
   )
 
@@ -382,7 +383,7 @@ export default function Settings() {
           </div>
           {err && <p className="text-red-600 text-sm">{err}</p>}
           {saved && <p className="text-green-600 text-sm">Saved.</p>}
-          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save name</button>
+          <button type="submit" className="px-4 py-2 btn-brand text-white rounded-lg hover:opacity-95">Save name</button>
         </form>
       </div>
     )
@@ -401,14 +402,14 @@ export default function Settings() {
           <button
             type="button"
             onClick={() => setOwnerTab('branding')}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg ${ownerTab === 'branding' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg ${ownerTab === 'branding' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-brand' : 'text-gray-600 hover:text-gray-900'}`}
           >
             Branding & schedule
           </button>
           <button
             type="button"
             onClick={() => setOwnerTab('coaches')}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg inline-flex items-center gap-2 ${ownerTab === 'coaches' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg inline-flex items-center gap-2 ${ownerTab === 'coaches' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-brand' : 'text-gray-600 hover:text-gray-900'}`}
           >
             <FiUsers className="text-base" />
             Coaches
@@ -436,7 +437,7 @@ export default function Settings() {
                           <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-800">Owner</span>
                         )}
                         {!m.isOwner && m.canCreateSessions && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Sessions</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">Sessions</span>
                         )}
                         {!m.isOwner && m.canManageStudents && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Students</span>
@@ -448,7 +449,7 @@ export default function Settings() {
                     </div>
                     {!m.isOwner && (
                       <div className="flex gap-2 shrink-0">
-                        <button type="button" onClick={() => openEditCoach(m)} className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg hover:bg-white text-blue-700 border-blue-200">
+                        <button type="button" onClick={() => openEditCoach(m)} className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg hover:bg-white text-brand border-brand-subtle">
                           <FiEdit2 /> Edit
                         </button>
                         <button type="button" onClick={() => handleDeleteCoach(m)} className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg hover:bg-red-50 text-red-700 border-red-200">
@@ -486,7 +487,7 @@ export default function Settings() {
                   Can add &amp; edit students
                 </label>
                 <p className="text-xs text-gray-500">Attendance: always allowed on sessions this coach is assigned to.</p>
-                <button type="button" onClick={handleAddStaff} className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Add coach</button>
+                <button type="button" onClick={handleAddStaff} className="px-4 py-2 btn-brand text-white text-sm rounded-lg hover:opacity-95">Add coach</button>
               </div>
             </div>
           </div>
@@ -519,7 +520,7 @@ export default function Settings() {
                 </div>
                 {editErr && <p className="text-red-600 text-xs">{editErr}</p>}
                 <div className="flex gap-2 pt-2">
-                  <button type="button" onClick={handleSaveEditCoach} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">Save</button>
+                  <button type="button" onClick={handleSaveEditCoach} className="px-4 py-2 btn-brand text-white text-sm rounded-lg hover:opacity-95">Save</button>
                   <button type="button" onClick={() => setEditCoach(null)} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button>
                 </div>
               </div>

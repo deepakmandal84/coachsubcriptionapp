@@ -36,7 +36,7 @@ public class StudentsController : ControllerBase
             q = q.Where(x => EF.Functions.ILike(x.Name, term) || (x.Email != null && EF.Functions.ILike(x.Email, term)) || (x.ParentName != null && EF.Functions.ILike(x.ParentName, term)));
         }
         var list = await q.OrderByDescending(x => x.CreatedAt)
-            .Select(x => new StudentListDto(x.Id, x.Name, x.ParentName, x.Email, x.Phone, x.Status.ToString(), x.Tags, x.CreatedAt))
+            .Select(x => new StudentListDto(x.Id, x.Name, x.ParentName, x.Email, x.Phone, x.Status.ToString(), x.Tags, x.MeasurementUnit.ToString(), x.Gender.ToString(), x.CreatedAt))
             .ToListAsync(ct);
         return Ok(list);
     }
@@ -47,7 +47,21 @@ public class StudentsController : ControllerBase
         if (_tenant.TenantId == null) return Forbid();
         var x = await _db.Students.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
         if (x == null) return NotFound();
-        return Ok(new StudentDetailDto(x.Id, x.Name, x.ParentName, x.Email, x.Phone, x.Notes, x.Tags, x.Status.ToString(), x.CreatedAt));
+        return Ok(ProgressMeasurementHelper.ToStudentDetailDto(x));
+    }
+
+    [HttpPut("{id:guid}/measurement-unit")]
+    public async Task<ActionResult> UpdateMeasurementUnit(Guid id, [FromBody] UpdateStudentMeasurementUnitRequest request, CancellationToken ct)
+    {
+        if (_tenant.TenantId == null) return Forbid();
+        var x = await _db.Students.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (x == null) return NotFound();
+        if (!Enum.TryParse<MeasurementUnit>(request.MeasurementUnit, true, out var unit))
+            return BadRequest("MeasurementUnit must be Metric or Imperial.");
+        x.MeasurementUnit = unit;
+        x.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
     }
 
     [HttpPost]
@@ -66,11 +80,13 @@ public class StudentsController : ControllerBase
             Notes = request.Notes,
             Tags = request.Tags,
             Status = Enum.TryParse<StudentStatus>(request.Status, true, out var st) ? st : StudentStatus.Active,
+            MeasurementUnit = ParseMeasurementUnit(request.MeasurementUnit),
             CreatedAt = DateTime.UtcNow
         };
+        ProgressMeasurementHelper.ApplyStudentDemographics(student, request.Gender, request.Height, request.DateOfBirth);
         _db.Students.Add(student);
         await _db.SaveChangesAsync(ct);
-        return CreatedAtAction(nameof(Get), new { id = student.Id }, new StudentDetailDto(student.Id, student.Name, student.ParentName, student.Email, student.Phone, student.Notes, student.Tags, student.Status.ToString(), student.CreatedAt));
+        return CreatedAtAction(nameof(Get), new { id = student.Id }, ProgressMeasurementHelper.ToStudentDetailDto(student));
     }
 
     [HttpPut("{id:guid}")]
@@ -87,10 +103,16 @@ public class StudentsController : ControllerBase
         x.Notes = request.Notes;
         x.Tags = request.Tags;
         x.Status = Enum.TryParse<StudentStatus>(request.Status, true, out var st) ? st : x.Status;
+        if (request.MeasurementUnit != null)
+            x.MeasurementUnit = ParseMeasurementUnit(request.MeasurementUnit);
+        ProgressMeasurementHelper.ApplyStudentDemographics(x, request.Gender, request.Height, request.DateOfBirth);
         x.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return Ok(new StudentDetailDto(x.Id, x.Name, x.ParentName, x.Email, x.Phone, x.Notes, x.Tags, x.Status.ToString(), x.CreatedAt));
+        return Ok(ProgressMeasurementHelper.ToStudentDetailDto(x));
     }
+
+    static MeasurementUnit ParseMeasurementUnit(string? value) =>
+        Enum.TryParse<MeasurementUnit>(value, true, out var u) ? u : MeasurementUnit.Metric;
 
     [HttpPost("class-usage")]
     public async Task<ActionResult<BatchClassUsageResponse>> BatchClassUsage([FromBody] BatchClassUsageRequest request, CancellationToken ct)

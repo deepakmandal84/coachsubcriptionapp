@@ -24,19 +24,17 @@ public class AdminController : ControllerBase
     [HttpGet("dashboard")]
     public async Task<ActionResult<AdminDashboardDto>> GetDashboard(CancellationToken ct)
     {
-        var coaches = await _db.Coaches.IgnoreQueryFilters()
-            .AsNoTracking()
-            .OrderByDescending(c => c.CreatedAt)
-            .Select(c => new { c.Id, c.Email, c.Name, c.AcademyName, c.IsActive, c.CreatedAt })
-            .ToListAsync(ct);
-        var result = new List<AdminCoachRowDto>();
-        foreach (var c in coaches)
-        {
-            var studentCount = await _db.Students.IgnoreQueryFilters().CountAsync(s => s.TenantId == c.Id, ct);
-            var activeSubCount = await _db.Subscriptions.IgnoreQueryFilters().CountAsync(s => s.TenantId == c.Id && s.Status == SubscriptionStatus.Active, ct);
-            result.Add(new AdminCoachRowDto(c.Id, c.Email, c.Name, c.AcademyName, c.IsActive, c.CreatedAt, studentCount, activeSubCount));
-        }
-        return Ok(new AdminDashboardDto(result, result.Count));
+        var academies = await BuildAcademyListAsync(ct);
+        return Ok(new AdminDashboardDto(academies, academies.Count));
+    }
+
+    /// <summary>Academy owners (tenants). Staff coaches belong to an academy via <see cref="Coach.ClubTenantId"/>.</summary>
+    [HttpGet("academies")]
+    public async Task<ActionResult<List<AdminAcademySummaryDto>>> ListAcademies(CancellationToken ct)
+    {
+        var academies = await BuildAcademyListAsync(ct);
+        return Ok(academies.Select(a => new AdminAcademySummaryDto(
+            a.Id, a.AcademyName, a.OwnerName, a.OwnerEmail, a.IsActive, a.CreatedAt, a.StudentCount, a.ActiveSubscriptionCount, a.StaffCount)).ToList());
     }
 
     [HttpGet("coaches")]
@@ -45,10 +43,54 @@ public class AdminController : ControllerBase
         var list = await _db.Coaches.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(c => c.Role == Role.Coach && c.ClubTenantId == null)
-            .OrderBy(c => c.Email)
+            .OrderBy(c => c.AcademyName ?? c.Name)
             .Select(c => new CoachListDto(c.Id, c.Email, c.Name, c.AcademyName, c.IsActive, c.CreatedAt))
             .ToListAsync(ct);
         return Ok(list);
+    }
+
+    async Task<List<AdminAcademyDto>> BuildAcademyListAsync(CancellationToken ct)
+    {
+        var owners = await _db.Coaches.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(c => c.Role == Role.Coach && c.ClubTenantId == null)
+            .OrderBy(c => c.AcademyName ?? c.Name)
+            .ToListAsync(ct);
+
+        var staff = await _db.Coaches.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(c => c.Role == Role.Coach && c.ClubTenantId != null)
+            .OrderBy(c => c.Name)
+            .ToListAsync(ct);
+
+        var staffByAcademy = staff
+            .Where(s => s.ClubTenantId.HasValue)
+            .GroupBy(s => s.ClubTenantId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var result = new List<AdminAcademyDto>();
+        foreach (var owner in owners)
+        {
+            var tenantId = owner.Id;
+            var studentCount = await _db.Students.IgnoreQueryFilters().CountAsync(s => s.TenantId == tenantId, ct);
+            var activeSubCount = await _db.Subscriptions.IgnoreQueryFilters()
+                .CountAsync(s => s.TenantId == tenantId && s.Status == SubscriptionStatus.Active, ct);
+            var staffList = staffByAcademy.TryGetValue(tenantId, out var members)
+                ? members.Select(m => new AdminStaffCoachDto(m.Id, m.Name, m.Email, m.IsActive)).ToList()
+                : new List<AdminStaffCoachDto>();
+            result.Add(new AdminAcademyDto(
+                tenantId,
+                owner.AcademyName ?? owner.Name,
+                owner.Name,
+                owner.Email,
+                owner.IsActive,
+                owner.CreatedAt,
+                studentCount,
+                activeSubCount,
+                staffList.Count,
+                staffList));
+        }
+        return result;
     }
 
     [HttpGet("coaches/{id:guid}/data")]
@@ -141,8 +183,29 @@ public class AdminController : ControllerBase
     }
 }
 
-public record AdminDashboardDto(List<AdminCoachRowDto> Coaches, int TotalCoaches);
-public record AdminCoachRowDto(Guid Id, string Email, string Name, string? AcademyName, bool IsActive, DateTime CreatedAt, int StudentCount, int ActiveSubscriptionCount);
+public record AdminDashboardDto(List<AdminAcademyDto> Academies, int TotalAcademies);
+public record AdminAcademyDto(
+    Guid Id,
+    string AcademyName,
+    string OwnerName,
+    string OwnerEmail,
+    bool IsActive,
+    DateTime CreatedAt,
+    int StudentCount,
+    int ActiveSubscriptionCount,
+    int StaffCount,
+    List<AdminStaffCoachDto> Staff);
+public record AdminAcademySummaryDto(
+    Guid Id,
+    string AcademyName,
+    string OwnerName,
+    string OwnerEmail,
+    bool IsActive,
+    DateTime CreatedAt,
+    int StudentCount,
+    int ActiveSubscriptionCount,
+    int StaffCount);
+public record AdminStaffCoachDto(Guid Id, string Name, string Email, bool IsActive);
 
 public record AdminCoachDataDto(AdminCoachInfoDto Coach, List<AdminStudentDto> Students, List<AdminSubscriptionDto> Subscriptions, List<AdminPackageDto> Packages);
 public record AdminCoachInfoDto(Guid Id, string Email, string Name, string? AcademyName, bool IsActive, DateTime CreatedAt);

@@ -78,7 +78,7 @@ public static class SeedData
             PasswordHash = AuthServiceHash("Demo123!"),
             Name = "Demo Coach",
             AcademyName = "Demo Academy",
-            PrimaryColor = "#2563eb",
+            PrimaryColor = "#0f766e",
             Role = Role.Coach,
             CreatedAt = DateTime.UtcNow,
             IsActive = true

@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using CoachSubscriptionApi.Data;
 using CoachSubscriptionApi.DTOs;
 using CoachSubscriptionApi.Entities;
@@ -45,15 +44,17 @@ public class ParentController : ControllerBase
             sub?.ExpiryDate,
             sub?.PaymentStatus.ToString() ?? "",
             sub?.Id,
-            classUsage));
+            classUsage,
+            student.CreatedAt));
     }
 
     [HttpGet("{token}/sessions")]
-    public async Task<ActionResult<List<SessionListDto>>> ListSessions(string token, [FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
+    public async Task<ActionResult<List<ParentSessionListDto>>> ListSessions(string token, [FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
     {
         var link = await ResolveLinkAsync(token, ct);
         if (link == null) return NotFound("Invalid or expired link.");
 
+        var studentId = link.StudentId;
         var q = _db.Sessions.AsNoTracking().Where(s => s.TenantId == link.TenantId);
         if (from.HasValue)
         {
@@ -65,32 +66,50 @@ public class ParentController : ControllerBase
             var toUtc = DateTime.SpecifyKind(to.Value.Date, DateTimeKind.Utc);
             q = q.Where(x => x.Date <= toUtc);
         }
-        try
-        {
-            var sessions = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
-                .Select(x => new SessionListDto(
-                    x.Id,
-                    x.Date,
-                    x.StartTime,
-                    x.Type.ToString(),
-                    x.Title,
-                    x.Location,
-                    x.CreatedAt,
-                    x.Bookings.Count,
-                    x.Attendances.Count,
-                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.CoachId).ToList(),
-                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.Coach.Name).ToList()
-                ))
-                .ToListAsync(ct);
-            return Ok(sessions);
-        }
-        catch (PostgresException ex) when (ex.SqlState is "42P01" or "42703")
-        {
-            var fallback = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
-                .Select(x => new SessionListDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, x.CreatedAt, 0, 0, new List<Guid>(), new List<string>()))
-                .ToListAsync(ct);
-            return Ok(fallback);
-        }
+
+        var sessions = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
+            .Select(x => new ParentSessionListDto(
+                x.Id,
+                x.Date,
+                x.StartTime,
+                x.Type.ToString(),
+                x.Title,
+                x.Location,
+                x.Bookings.Any(b => b.StudentId == studentId)
+            ))
+            .ToListAsync(ct);
+        return Ok(sessions);
+    }
+
+    [HttpGet("{token}/attended-classes")]
+    public async Task<ActionResult<List<ParentAttendedClassDto>>> ListAttendedClasses(string token, CancellationToken ct = default)
+    {
+        var link = await ResolveLinkAsync(token, ct);
+        if (link == null) return NotFound("Invalid or expired link.");
+
+        var student = await _db.Students.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == link.StudentId && s.TenantId == link.TenantId, ct);
+        if (student == null) return NotFound();
+
+        var from = DateTime.SpecifyKind(student.CreatedAt.Date, DateTimeKind.Utc);
+        var attended = await _db.Attendances.AsNoTracking()
+            .Where(a =>
+                a.StudentId == link.StudentId &&
+                a.Present &&
+                a.Session.TenantId == link.TenantId &&
+                a.Session.Date >= from)
+            .OrderByDescending(a => a.Session.Date)
+            .ThenByDescending(a => a.Session.StartTime)
+            .Select(a => new ParentAttendedClassDto(
+                a.SessionId,
+                a.Session.Date,
+                a.Session.StartTime,
+                a.Session.Type.ToString(),
+                a.Session.Title,
+                a.Session.Location,
+                a.SessionsConsumed))
+            .ToListAsync(ct);
+        return Ok(attended);
     }
 
     [HttpPost("{token}/sessions/{sessionId:guid}/book")]
@@ -120,6 +139,105 @@ public class ParentController : ControllerBase
         });
         await _db.SaveChangesAsync(ct);
         return Ok();
+    }
+
+    [HttpGet("{token}/progress")]
+    public async Task<ActionResult<ParentProgressViewDto>> GetProgress(string token, [FromQuery] int months = 12, CancellationToken ct = default)
+    {
+        var link = await ResolveLinkAsync(token, ct);
+        if (link == null) return NotFound("Invalid or expired link.");
+
+        var student = await _db.Students.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == link.StudentId && s.TenantId == link.TenantId, ct);
+        if (student == null) return NotFound();
+
+        var coach = await _db.Coaches.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == link.TenantId, ct);
+
+        var from = DateTime.UtcNow.Date.AddMonths(-Math.Clamp(months, 1, 60));
+        var entries = await _db.ProgressCheckIns.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.TenantId == link.TenantId && p.StudentId == link.StudentId && p.RecordedOn >= from)
+            .OrderByDescending(p => p.RecordedOn)
+            .ThenByDescending(p => p.CreatedAt)
+            .ToListAsync(ct);
+
+        return Ok(ProgressMeasurementHelper.BuildParentView(student, coach?.AcademyName ?? "My Coach", entries));
+    }
+
+    [HttpPost("{token}/progress/preview-body-fat")]
+    public async Task<ActionResult<BodyFatPreviewDto>> PreviewBodyFat(string token, [FromBody] BodyFatPreviewRequest request, CancellationToken ct = default)
+    {
+        var link = await ResolveLinkAsync(token, ct);
+        if (link == null) return NotFound("Invalid or expired link.");
+        var student = await _db.Students.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == link.StudentId && s.TenantId == link.TenantId, ct);
+        if (student == null) return NotFound();
+
+        var measurementsCm = ProgressMeasurementHelper.FromUserMeasurements(request.Measurements, student.MeasurementUnit);
+        var weightKg = ProgressMeasurementHelper.KgFromUserWeight(request.Weight, student.MeasurementUnit);
+        var calc = BodyFatCalculator.Preview(student, measurementsCm, weightKg);
+        var (_, method) = BodyFatCalculator.Resolve(null, student, measurementsCm, weightKg);
+        return Ok(new BodyFatPreviewDto(calc, method?.ToString(), Array.Empty<string>()));
+    }
+
+    [HttpPost("{token}/progress")]
+    public async Task<ActionResult<ProgressCheckInDto>> CreateProgress(string token, [FromBody] CreateProgressCheckInRequest request, CancellationToken ct = default)
+    {
+        var link = await ResolveLinkAsync(token, ct);
+        if (link == null) return NotFound("Invalid or expired link.");
+
+        var student = await _db.Students.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.Id == link.StudentId && s.TenantId == link.TenantId, ct);
+        if (student == null) return NotFound();
+
+        var entry = new ProgressCheckIn
+        {
+            Id = Guid.NewGuid(),
+            TenantId = link.TenantId,
+            StudentId = student.Id,
+            RecordedOn = DateTime.SpecifyKind(request.RecordedOn.Date, DateTimeKind.Utc),
+            Source = ProgressSource.ParentPortal,
+            CreatedAt = DateTime.UtcNow,
+        };
+        ProgressMeasurementHelper.ApplyCheckInMetrics(entry, student, request);
+        _db.ProgressCheckIns.Add(entry);
+        await _db.SaveChangesAsync(ct);
+        return Ok(ProgressMeasurementHelper.ToDto(entry, student.MeasurementUnit));
+    }
+
+    [HttpPut("{token}/progress-profile")]
+    public async Task<ActionResult<ProgressProfileDto>> UpdateProgressProfile(string token, [FromBody] UpdateProgressProfileRequest request, CancellationToken ct = default)
+    {
+        var link = await ResolveLinkAsync(token, ct);
+        if (link == null) return NotFound("Invalid or expired link.");
+
+        var student = await _db.Students.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.Id == link.StudentId && s.TenantId == link.TenantId, ct);
+        if (student == null) return NotFound();
+
+        ProgressMeasurementHelper.ApplyProfileUpdate(student, request);
+        student.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(ProgressMeasurementHelper.ToProfileDto(student));
+    }
+
+    [HttpPut("{token}/measurement-unit")]
+    public async Task<ActionResult> UpdateMeasurementUnit(string token, [FromBody] UpdateStudentMeasurementUnitRequest request, CancellationToken ct = default)
+    {
+        var link = await ResolveLinkAsync(token, ct);
+        if (link == null) return NotFound("Invalid or expired link.");
+
+        var student = await _db.Students.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.Id == link.StudentId && s.TenantId == link.TenantId, ct);
+        if (student == null) return NotFound();
+
+        if (!Enum.TryParse<MeasurementUnit>(request.MeasurementUnit, true, out var unit))
+            return BadRequest("MeasurementUnit must be Metric or Imperial.");
+
+        student.MeasurementUnit = unit;
+        student.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
     }
 
     [HttpPost("{token}/request-renewal")]

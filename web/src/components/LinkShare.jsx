@@ -103,7 +103,7 @@ export default function LinkShare({
         className={variant === 'compact' ? 'p-2 rounded border bg-white hover:bg-gray-50 inline-flex items-center justify-center' : 'px-3 py-2 text-sm rounded border bg-white hover:bg-gray-50 inline-flex items-center gap-2'}
         aria-label="Share by Email"
       >
-        <FaEnvelope className="text-base text-blue-600" />
+        <FaEnvelope className="text-base text-brand" />
         {variant === 'full' && 'Email'}
       </button>
       <button

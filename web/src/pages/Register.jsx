@@ -31,7 +31,7 @@ export default function Register() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-6">
       <div className="w-full max-w-sm bg-white rounded-3xl shadow-sm border overflow-hidden">
-        <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600">
+        <div className="p-6 bg-gradient-to-r from-teal-700 to-emerald-800">
           <h1 className="text-xl font-semibold text-white text-center">Coach Sign Up</h1>
           <p className="text-sm text-white/80 text-center mt-1">Create your account</p>
         </div>
@@ -44,7 +44,7 @@ export default function Register() {
               value={name}
               onChange={e => setName(e.target.value)}
               required
-              className="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus-brand focus:outline-none"
             />
           </div>
           <div>
@@ -54,7 +54,7 @@ export default function Register() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              className="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus-brand focus:outline-none"
             />
           </div>
           <div>
@@ -64,7 +64,7 @@ export default function Register() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              className="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus-brand focus:outline-none"
             />
           </div>
           <div>
@@ -73,17 +73,17 @@ export default function Register() {
               type="text"
               value={academyName}
               onChange={e => setAcademyName(e.target.value)}
-              className="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus-brand focus:outline-none"
             />
           </div>
-          <button type="submit" disabled={loading} className="w-full py-3 rounded-2xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 shadow-sm active:scale-[0.99] transition">
+          <button type="submit" disabled={loading} className="w-full py-3 rounded-2xl btn-brand text-white font-semibold hover:opacity-95 disabled:opacity-50 shadow-sm active:scale-[0.99] transition">
             {loading ? 'Creating...' : 'Create account'}
           </button>
         </form>
         <div className="p-6 pt-0">
           <p className="mt-2 text-center text-sm text-gray-500">
             Already have an account?{' '}
-            <Link to="/login" className="text-blue-600 hover:underline font-medium">
+            <Link to="/login" className="text-brand hover:underline font-medium">
               Login
             </Link>
           </p>

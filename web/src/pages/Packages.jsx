@@ -3,12 +3,25 @@ import { useAuth } from '../AuthContext'
 import { packagesApi } from '../api'
 import { PACKAGE_CATEGORIES, getThemeColorForCategory } from '../constants/categories'
 import { FiBox, FiEdit2, FiPlus, FiTrash2 } from 'react-icons/fi'
+import PageHeader from '../components/ui/PageHeader'
+import Button from '../components/ui/Button'
+import Card from '../components/ui/Card'
+import Alert from '../components/ui/Alert'
+import Modal from '../components/ui/Modal'
+import Input from '../components/ui/Input'
+import Select from '../components/ui/Select'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { useToast } from '../context/ToastContext'
+import { formatError } from '../utils/formatError'
 
 export default function Packages() {
   const { refresh } = useAuth()
+  const toast = useToast()
   const [list, setList] = useState([])
   const [err, setErr] = useState('')
   const [modal, setModal] = useState(null)
+  const [deleteId, setDeleteId] = useState(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({
     name: '',
@@ -21,7 +34,7 @@ export default function Packages() {
   })
 
   function load() {
-    packagesApi.list().then(setList).catch(e => setErr(e instanceof Error ? e.message : 'Failed'))
+    packagesApi.list().then(setList).catch((e) => setErr(formatError(e)))
   }
 
   useEffect(() => { load() }, [])
@@ -64,9 +77,10 @@ export default function Packages() {
         category: category || undefined,
       })
       setModal(null)
+      toast.success('Package created')
       await refresh()
       load()
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+    } catch (e) { setErr(formatError(e)) }
   }
 
   async function handleUpdate(e) {
@@ -83,35 +97,49 @@ export default function Packages() {
         category: category || undefined,
       })
       setModal(null)
+      toast.success('Package updated')
       await refresh()
       load()
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+    } catch (e) { setErr(formatError(e)) }
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Delete this package?')) return
+  async function handleDelete() {
+    if (!deleteId) return
+    setDeleteBusy(true)
     try {
-      await packagesApi.delete(id)
+      await packagesApi.delete(deleteId)
+      setDeleteId(null)
+      toast.success('Package removed')
       load()
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+    } catch (e) {
+      setErr(formatError(e))
+    } finally {
+      setDeleteBusy(false)
+    }
   }
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <span className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-indigo-100 text-indigo-700">
-            <FiBox />
-          </span>
-          Packages
-        </h1>
-        <button onClick={openCreate} className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 inline-flex items-center gap-2 shadow-sm"><FiPlus />Add package</button>
-      </div>
-      {err && <p className="text-red-600 mb-2">{err}</p>}
+      <PageHeader
+        icon={FiBox}
+        title="Packages"
+        description="Plans you sell — class packs, unlimited monthly, or drop-in."
+        action={
+          <Button onClick={openCreate}>
+            <FiPlus />
+            Add package
+          </Button>
+        }
+      />
+      {err && (
+        <Alert variant="error" className="mb-4" onDismiss={() => setErr('')}>
+          {err}
+        </Alert>
+      )}
       <div className="space-y-3">
-        <div className="hidden md:block bg-white rounded-lg border overflow-hidden">
+        <Card padding={false} className="hidden md:block overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="text-left p-3">Name</th>
                 <th className="text-left p-3">Category</th>
@@ -132,18 +160,18 @@ export default function Packages() {
                   <td className="p-3">{p.totalSessions ?? 'Unlimited'}</td>
                   <td className="p-3">{p.type}</td>
                   <td className="p-3">
-                    <button onClick={() => openEdit(p)} className="inline-flex items-center gap-1 text-blue-600 mr-3 hover:underline"><FiEdit2 />Edit</button>
-                    <button onClick={() => handleDelete(p.id)} className="inline-flex items-center gap-1 text-red-600 hover:underline"><FiTrash2 />Delete</button>
+                    <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><FiEdit2 />Edit</Button>
+                    <Button variant="ghost" size="sm" className="text-red-600" onClick={() => setDeleteId(p.id)}><FiTrash2 />Delete</Button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
 
         <div className="md:hidden space-y-3">
           {list.map(p => (
-            <div key={p.id} className="bg-white rounded-2xl border p-4 shadow-sm">
+            <Card key={p.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-semibold">{p.name}</div>
@@ -157,23 +185,27 @@ export default function Packages() {
                 </div>
               </div>
               <div className="flex gap-2 pt-3">
-                <button onClick={() => openEdit(p)} className="flex-1 px-3 py-2 rounded-xl border border-blue-100 text-blue-700 bg-blue-50 inline-flex items-center justify-center gap-1"><FiEdit2 />Edit</button>
-                <button onClick={() => handleDelete(p.id)} className="flex-1 px-3 py-2 rounded-xl border border-red-100 text-red-700 bg-red-50 inline-flex items-center justify-center gap-1"><FiTrash2 />Delete</button>
+                <Button variant="secondary" size="sm" className="flex-1" onClick={() => openEdit(p)}><FiEdit2 />Edit</Button>
+                <Button variant="ghost" size="sm" className="flex-1 text-red-600" onClick={() => setDeleteId(p.id)}><FiTrash2 />Delete</Button>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       </div>
 
       {modal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-lg p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-4">{modal === 'create' ? 'New package' : 'Edit package'}</h2>
-            <form onSubmit={modal === 'create' ? handleCreate : handleUpdate} className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Name *</label>
-                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required className="w-full border rounded px-3 py-2" />
-              </div>
+        <Modal
+          title={modal === 'create' ? 'New package' : 'Edit package'}
+          onClose={() => setModal(null)}
+          footer={
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
+              <Button type="submit" form="package-form">{modal === 'create' ? 'Create' : 'Save'}</Button>
+            </div>
+          }
+        >
+            <form id="package-form" onSubmit={modal === 'create' ? handleCreate : handleUpdate} className="space-y-3">
+              <Input label="Name *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
               <div>
                 <label className="block text-sm font-medium text-gray-700">Category (sets your white-label theme)</label>
                 <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value, categoryOther: '' }))} className="w-full border rounded px-3 py-2">
@@ -220,14 +252,19 @@ export default function Packages() {
                   <input type="number" min="1" value={form.totalSessions ?? ''} onChange={e => setForm(f => ({ ...f, totalSessions: e.target.value ? Number(e.target.value) : undefined }))} className="w-full border rounded px-3 py-2" />
                 </div>
               )}
-              <div className="flex gap-2 pt-2">
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">{modal === 'create' ? 'Create' : 'Save'}</button>
-                <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
-              </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete package?"
+        description="Subscriptions using this package are not affected, but you cannot sell it again."
+        confirmLabel="Delete"
+        busy={deleteBusy}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   )
 }

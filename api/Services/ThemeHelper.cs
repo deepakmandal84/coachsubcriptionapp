@@ -19,7 +19,7 @@ public static class ThemeHelper
 
     public static string GetThemeColorForCategory(string? category)
     {
-        if (string.IsNullOrWhiteSpace(category)) return "#2563eb";
-        return ThemeColors.TryGetValue(category.Trim(), out var color) ? color : "#2563eb";
+        if (string.IsNullOrWhiteSpace(category)) return "#0f766e";
+        return ThemeColors.TryGetValue(category.Trim(), out var color) ? color : "#0f766e";
     }
 }

@@ -82,6 +82,8 @@ try
         try
         {
             await PostgresSchemaPatcher.EnsureSessionBookingSchemaAsync(db);
+            await PostgresSchemaPatcher.EnsureProgressSchemaAsync(db);
+            await PostgresSchemaPatcher.EnsureProgressProfileSchemaAsync(db);
             await db.SeedAsync(builder.Configuration);
         }
         catch (PostgresException ex) when (ex.SqlState == "42P01")
@@ -101,6 +103,8 @@ try
             await dbRetry.Database.ExecuteSqlRawAsync(
                 "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260320120000_SessionBookingsAndScheduleShare', '8.0.11') ON CONFLICT (\"MigrationId\") DO NOTHING");
             await PostgresSchemaPatcher.EnsureSessionBookingSchemaAsync(dbRetry);
+            await PostgresSchemaPatcher.EnsureProgressSchemaAsync(dbRetry);
+            await PostgresSchemaPatcher.EnsureProgressProfileSchemaAsync(dbRetry);
             await dbRetry.SeedAsync(builder.Configuration);
         }
     }

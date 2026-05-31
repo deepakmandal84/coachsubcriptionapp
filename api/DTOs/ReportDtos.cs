@@ -8,3 +8,13 @@ public record DashboardDto(
     List<ExpiringSoonItem> ExpiringSoon);
 
 public record ExpiringSoonItem(Guid SubscriptionId, string StudentName, string PackageName, DateTime ExpiryDate, int? RemainingSessions);
+
+public record MonthlyReportDto(List<MonthlyReportRowDto> Months);
+
+public record MonthlyReportRowDto(
+    int Year,
+    int Month,
+    string Label,
+    int ActiveStudentCount,
+    int ActiveSubscriptionCount,
+    decimal Revenue);

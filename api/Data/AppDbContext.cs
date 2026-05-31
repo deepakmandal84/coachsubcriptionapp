@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<MessageLog> MessageLogs => Set<MessageLog>();
     public DbSet<RenewalRequest> RenewalRequests => Set<RenewalRequest>();
     public DbSet<RenewalTransaction> RenewalTransactions => Set<RenewalTransaction>();
+    public DbSet<ProgressCheckIn> ProgressCheckIns => Set<ProgressCheckIn>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -140,6 +141,15 @@ public class AppDbContext : DbContext
             e.HasIndex(x => new { x.TenantId, x.StudentId, x.ConfirmedAt });
         });
 
+        builder.Entity<ProgressCheckIn>(e =>
+        {
+            e.ToTable("progresscheckins");
+            e.HasKey(x => x.Id);
+            e.HasOne(x => x.Coach).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Student).WithMany(s => s.ProgressCheckIns).HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TenantId, x.StudentId, x.RecordedOn });
+        });
+
         // Global query filter: evaluated at query time; _tenant.TenantId is per-request (scoped).
         builder.Entity<Student>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
         builder.Entity<Package>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
@@ -153,5 +163,6 @@ public class AppDbContext : DbContext
         builder.Entity<RenewalRequest>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
         builder.Entity<RenewalTransaction>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
         builder.Entity<SessionCoach>().HasQueryFilter(x => _tenant.TenantId == null || x.Session!.TenantId == _tenant.TenantId);
+        builder.Entity<ProgressCheckIn>().HasQueryFilter(x => _tenant.TenantId == null || x.TenantId == _tenant.TenantId);
     }
 }

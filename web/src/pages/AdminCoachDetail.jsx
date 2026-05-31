@@ -38,7 +38,7 @@ export default function AdminCoachDetail() {
   function workAsThisAcademy() {
     if (!id) return
     localStorage.setItem('actingTenantId', id)
-    window.location.href = '/'
+    window.location.href = `/academies/${id}/students`
   }
 
   async function saveEdit(e) {
@@ -85,15 +85,15 @@ export default function AdminCoachDetail() {
   return (
     <div>
       <div className="mb-6">
-        <button onClick={() => navigate('/admin')} className="text-blue-600 text-sm hover:underline mb-2">← Back to all coaches</button>
-        <h1 className="text-2xl font-semibold">{coachDetail.name}</h1>
-        <p className="text-gray-500">{coachDetail.academyName || '—'} · {coachDetail.email}</p>
+        <button onClick={() => navigate('/admin')} className="text-brand text-sm hover:underline mb-2">← Back to academies</button>
+        <h1 className="text-2xl font-semibold">{coachDetail.academyName || coachDetail.name}</h1>
+        <p className="text-gray-500">Owner: {coachDetail.name} · {coachDetail.email}</p>
         <p className="text-sm text-gray-400 mt-1">Signed up {new Date(coachDetail.createdAt).toLocaleDateString()} · {coachDetail.isActive ? 'Active' : 'Inactive'}</p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={workAsThisAcademy}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700"
+            className="px-4 py-2 rounded-lg btn-brand text-white text-sm hover:opacity-95"
           >
             Manage this academy (Students, Packages, Sessions…)
           </button>

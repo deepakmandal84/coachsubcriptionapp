@@ -31,6 +31,7 @@ export async function api(path, init) {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...actingTenantHeaders(),
       ...init?.headers,
     },
   })
@@ -79,6 +80,30 @@ export const studentsApi = {
   delete: (id) => api(`/students/${id}`, { method: 'DELETE' }),
   batchClassUsage: (studentIds) =>
     api('/students/class-usage', { method: 'POST', body: JSON.stringify({ studentIds }) }),
+  setMeasurementUnit: (id, measurementUnit) =>
+    api(`/students/${id}/measurement-unit`, {
+      method: 'PUT',
+      body: JSON.stringify({ measurementUnit }),
+    }),
+}
+
+export const progressApi = {
+  getSummary: (studentId, months = 12) =>
+    api(`/students/${studentId}/progress?months=${months}`),
+  getChart: (studentId, months = 12) =>
+    api(`/students/${studentId}/progress/chart?months=${months}`),
+  create: (studentId, body) =>
+    api(`/students/${studentId}/progress`, { method: 'POST', body: JSON.stringify(body) }),
+  update: (studentId, checkInId, body) =>
+    api(`/students/${studentId}/progress/${checkInId}`, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: (studentId, checkInId) =>
+    api(`/students/${studentId}/progress/${checkInId}`, { method: 'DELETE' }),
+  setMeasurementUnit: (studentId, measurementUnit) =>
+    studentsApi.setMeasurementUnit(studentId, measurementUnit),
+  updateProfile: (studentId, body) =>
+    api(`/students/${studentId}/progress/profile`, { method: 'PUT', body: JSON.stringify(body) }),
+  previewBodyFat: (studentId, body) =>
+    api(`/students/${studentId}/progress/preview-body-fat`, { method: 'POST', body: JSON.stringify(body) }),
 }
 
 export const packagesApi = {
@@ -138,21 +163,47 @@ export const messageLogsApi = {
   list: (params) => api(`/messagelogs${toQueryString(params)}`),
 }
 
-export const reportsApi = { dashboard: () => api('/reports/dashboard') }
+export const reportsApi = {
+  dashboard: () => api('/reports/dashboard'),
+  monthly: (months = 12) => api(`/reports/monthly?months=${months}`),
+}
 
 export const parentApi = {
   getByToken: (token) => api(`/parent/${encodeURIComponent(token)}`),
   requestRenewal: (token) => api(`/parent/${encodeURIComponent(token)}/request-renewal`, { method: 'POST' }),
   listSessions: (token, params) => api(`/parent/${encodeURIComponent(token)}/sessions${toQueryString(params)}`),
+  listAttendedClasses: (token) => api(`/parent/${encodeURIComponent(token)}/attended-classes`),
   bookSession: (token, sessionId, phone) =>
     api(`/parent/${encodeURIComponent(token)}/sessions/${sessionId}/book`, {
       method: 'POST',
       body: JSON.stringify({ phone: phone || null }),
     }),
+  getProgress: (token, months = 12) =>
+    api(`/parent/${encodeURIComponent(token)}/progress?months=${months}`),
+  createProgress: (token, body) =>
+    api(`/parent/${encodeURIComponent(token)}/progress`, { method: 'POST', body: JSON.stringify(body) }),
+  setMeasurementUnit: (token, measurementUnit) =>
+    api(`/parent/${encodeURIComponent(token)}/measurement-unit`, {
+      method: 'PUT',
+      body: JSON.stringify({ measurementUnit }),
+    }),
+  updateProfile: (token, body) =>
+    api(`/parent/${encodeURIComponent(token)}/progress-profile`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  previewBodyFat: (token, body) =>
+    api(`/parent/${encodeURIComponent(token)}/progress/preview-body-fat`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 }
 
 export const adminApi = {
   dashboard: () => api('/admin/dashboard'),
+  /** Academy tenants (owners); staff belong to an academy, not listed as separate tenants. */
+  listAcademySummaries: () => api('/admin/academies'),
+  listAcademies: () => api('/admin/academies'),
   getCoachData: (coachId) => api(`/admin/coaches/${coachId}/data`),
   onboardAcademy: (body) => api('/admin/academies', { method: 'POST', body: JSON.stringify(body) }),
   updateAcademy: (id, body) => api(`/admin/coaches/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

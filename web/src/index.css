@@ -2,24 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
-  height: 100%;
+@layer base {
+  :root {
+    --brand: 15 118 110;
+    --brand-hover: 17 94 89;
+    --surface: 255 255 255;
+    --muted: 248 250 252;
+    --border: 226 232 240;
+    --radius: 0.75rem;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    @apply text-slate-900 antialiased font-sans;
+    background: rgb(var(--muted));
+    -webkit-font-smoothing: antialiased;
+  }
 }
 
-body {
-  @apply text-slate-900 antialiased;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  -webkit-tap-highlight-color: transparent;
+@layer components {
+  .nav-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 transition-colors;
+  }
+  .nav-link:hover {
+    @apply bg-slate-100 text-slate-900;
+  }
+  .nav-link-active {
+    color: rgb(var(--brand));
+    background-color: rgb(var(--brand) / 0.1);
+  }
+  .bg-brand-subtle {
+    background-color: rgb(var(--brand) / 0.1);
+  }
+  .border-brand-subtle {
+    border-color: rgb(var(--brand) / 0.2);
+  }
+  .text-brand-accent {
+    color: rgb(var(--brand));
+  }
+  .btn-brand {
+    background-color: rgb(var(--brand));
+  }
+  .btn-brand:hover {
+    background-color: rgb(var(--brand-hover));
+  }
+  .focus-brand:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgb(var(--brand) / 0.35);
+  }
+  .safe-area-pb {
+    padding-bottom: max(0.25rem, env(safe-area-inset-bottom, 0px));
+  }
 }
 
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35);
-  border-radius: 0.75rem;
+  box-shadow: 0 0 0 3px rgb(var(--brand) / 0.35);
+  border-radius: var(--radius);
 }
-
