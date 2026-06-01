@@ -19,6 +19,7 @@ import Tabs from '../components/ui/Tabs'
 import { TableSkeleton } from '../components/ui/Skeleton'
 import { useToast } from '../context/ToastContext'
 import { formatError } from '../utils/formatError'
+import CopyWeightLogLink from '../components/students/CopyWeightLogLink'
 
 const ROSTER_TABS = [
   { id: 'active', label: 'Active roster', icon: FiUser },
@@ -214,7 +215,8 @@ export default function Students() {
     }
 
     return (
-      <div className="inline-flex flex-wrap gap-2 justify-end">
+      <div className="inline-flex flex-wrap items-center gap-2 justify-end">
+        <CopyWeightLogLink studentId={s.id} studentName={s.name} studentPhone={s.phone} />
         <Link to={paths.studentProgress(s.id)}>
           <Button variant="ghost" size="sm">
             <FiActivity />
