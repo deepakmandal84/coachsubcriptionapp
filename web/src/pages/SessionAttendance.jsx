@@ -3,13 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { sessionsApi, studentsApi } from '../api'
 import { useAppPaths } from '../hooks/useAppPaths'
 import { formatClassUsage } from '../utils/classUsage'
-
-function formatTime(session) {
-  const t = session.startTime
-  if (typeof t === 'string') return t.length >= 5 ? t.slice(0, 5) : t
-  const secs = Number(t) || 0
-  return `${String(Math.floor(secs / 3600)).padStart(2, '0')}:${String(Math.floor((secs % 3600) / 60)).padStart(2, '0')}`
-}
+import { formatSessionDate, formatSessionTime } from '../utils/sessionFormat'
 
 export default function SessionAttendance() {
   const { id } = useParams()
@@ -124,7 +118,7 @@ export default function SessionAttendance() {
     )
   }
 
-  const timeStr = formatTime(session)
+  const timeStr = formatSessionTime(session)
   const canEdit = session.canMarkAttendance === true
 
   return (
@@ -136,7 +130,7 @@ export default function SessionAttendance() {
           </button>
           <h1 className="text-2xl font-semibold">Attendance: {session.title}</h1>
           <p className="text-gray-500">
-            {new Date(session.date).toLocaleDateString()} at {timeStr} · {session.type}
+            {formatSessionDate(session.date)} at {timeStr} · {session.type}
           </p>
         </div>
         <button

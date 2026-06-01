@@ -1,10 +1,27 @@
 /** Local calendar date key YYYY-MM-DD for grouping session dates. */
 export function toLocalDateKey(value) {
+  if (typeof value === 'string') {
+    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  }
   const d = new Date(value)
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+/** Today's date as YYYY-MM-DD in local timezone (for &lt;input type="date"&gt;). */
+export function localDateInputValue(d = new Date()) {
+  return toLocalDateKey(d)
+}
+
+/** Display API date strings without UTC day shift. */
+export function formatApiDateDisplay(value, options) {
+  const key = toLocalDateKey(value)
+  if (!key || key.length < 10) return '—'
+  const [y, mo, day] = key.split('-').map(Number)
+  return new Date(y, mo - 1, day).toLocaleDateString(undefined, options)
 }
 
 export function parseLocalDateKey(key) {

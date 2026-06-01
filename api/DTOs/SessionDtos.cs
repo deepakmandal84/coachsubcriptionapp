@@ -1,11 +1,11 @@
 namespace CoachSubscriptionApi.DTOs;
 
 public record SessionBookingDto(Guid Id, Guid StudentId, string StudentName, string? StudentPhoneLast4);
-public record SessionListDto(Guid Id, DateTime Date, TimeSpan StartTime, string Type, string Title, string? Location, DateTime CreatedAt, int BookingCount, int AttendanceCount, List<Guid> AssignedCoachIds, List<string> CoachNames);
+public record SessionListDto(Guid Id, string Date, string StartTime, string Type, string Title, string? Location, DateTime CreatedAt, int BookingCount, int AttendanceCount, List<Guid> AssignedCoachIds, List<string> CoachNames);
 public record AssignedCoachDto(Guid Id, string Name);
-public record SessionDetailDto(Guid Id, DateTime Date, TimeSpan StartTime, string Type, string Title, string? Location, List<SessionBookingDto> Bookings, List<AttendanceDto> Attendances, List<AssignedCoachDto> AssignedCoaches, DateTime CreatedAt, bool CanMarkAttendance);
-public record CreateSessionRequest(DateTime Date, string StartTime, string Type, string Title, string? Location, List<Guid>? CoachIds);
-public record UpdateSessionRequest(DateTime Date, string StartTime, string Type, string Title, string? Location, List<Guid>? CoachIds);
+public record SessionDetailDto(Guid Id, string Date, string StartTime, string Type, string Title, string? Location, List<SessionBookingDto> Bookings, List<AttendanceDto> Attendances, List<AssignedCoachDto> AssignedCoaches, DateTime CreatedAt, bool CanMarkAttendance);
+public record CreateSessionRequest(string Date, string StartTime, string Type, string Title, string? Location, List<Guid>? CoachIds);
+public record UpdateSessionRequest(string Date, string StartTime, string Type, string Title, string? Location, List<Guid>? CoachIds);
 public record AttendanceDto(Guid Id, Guid StudentId, string StudentName, bool Present, int SessionsConsumed);
 public record SetAttendanceRequest(List<AttendanceItemRequest> Items);
 public record AttendanceItemRequest(Guid StudentId, bool Present, int SessionsConsumed = 1);

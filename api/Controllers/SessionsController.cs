@@ -68,49 +68,98 @@ public class SessionsController : ControllerBase
         if (_tenant.TenantId == null) return Forbid();
         var tid = _tenant.TenantId.Value;
         var q = _db.Sessions.AsNoTracking();
-        if (assignedCoachId.HasValue)
+        var filterByCoach = assignedCoachId.HasValue;
+        if (filterByCoach)
         {
             var coachOk = await _db.Coaches.AsNoTracking()
-                .AnyAsync(c => c.Id == assignedCoachId.Value && ((c.Id == tid && c.ClubTenantId == null) || c.ClubTenantId == tid), ct);
+                .AnyAsync(c => c.Id == assignedCoachId!.Value && ((c.Id == tid && c.ClubTenantId == null) || c.ClubTenantId == tid), ct);
             if (!coachOk) return BadRequest("Unknown coach for this club.");
-            q = q.Where(s => s.SessionCoaches.Any(sc => sc.CoachId == assignedCoachId.Value));
+            q = q.Where(s => s.SessionCoaches.Any(sc => sc.CoachId == assignedCoachId!.Value));
         }
         if (from.HasValue)
         {
-            var fromUtc = DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc);
+            var fromUtc = SessionDateHelper.ToUtcDateOnly(from.Value);
             q = q.Where(x => x.Date >= fromUtc);
         }
         if (to.HasValue)
         {
-            var toUtc = DateTime.SpecifyKind(to.Value.Date, DateTimeKind.Utc);
+            var toUtc = SessionDateHelper.ToUtcDateOnly(to.Value);
             q = q.Where(x => x.Date <= toUtc);
         }
+
         try
         {
-            var list = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
-                .Select(x => new SessionListDto(
-                    x.Id,
-                    x.Date,
-                    x.StartTime,
-                    x.Type.ToString(),
-                    x.Title,
-                    x.Location,
-                    x.CreatedAt,
-                    x.Bookings.Count,
-                    x.Attendances.Count,
-                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.CoachId).ToList(),
-                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.Coach.Name).ToList()
-                ))
-                .ToListAsync(ct);
-            return Ok(list);
+            return Ok(await ListSessionsWithCoachesAsync(q, ct));
         }
-        catch (PostgresException ex) when (IsSchemaMismatch(ex))
+        catch (Exception ex) when (IsSchemaOrCoachJoinError(ex))
         {
-            var fallback = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
-                .Select(x => new SessionListDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, x.CreatedAt, 0, 0, new List<Guid>(), new List<string>()))
-                .ToListAsync(ct);
-            return Ok(fallback);
+            var qFallback = _db.Sessions.AsNoTracking();
+            if (from.HasValue)
+            {
+                var fromUtc = SessionDateHelper.ToUtcDateOnly(from.Value);
+                qFallback = qFallback.Where(x => x.Date >= fromUtc);
+            }
+            if (to.HasValue)
+            {
+                var toUtc = SessionDateHelper.ToUtcDateOnly(to.Value);
+                qFallback = qFallback.Where(x => x.Date <= toUtc);
+            }
+            return Ok(await ListSessionsBasicAsync(qFallback, ct));
         }
+    }
+
+    private static async Task<List<SessionListDto>> ListSessionsWithCoachesAsync(IQueryable<Session> q, CancellationToken ct)
+    {
+        var rows = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
+            .Select(x => new
+            {
+                x.Id,
+                x.Date,
+                x.StartTime,
+                x.Type,
+                x.Title,
+                x.Location,
+                x.CreatedAt,
+                BookingCount = x.Bookings.Count,
+                AttendanceCount = x.Attendances.Count,
+                CoachIds = x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.CoachId).ToList(),
+                CoachNames = x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.Coach.Name).ToList(),
+            })
+            .ToListAsync(ct);
+        return rows.Select(r => SessionDtoMapper.ToListDto(
+            r.Id, r.Date, r.StartTime, r.Type, r.Title, r.Location, r.CreatedAt,
+            r.BookingCount, r.AttendanceCount, r.CoachIds, r.CoachNames)).ToList();
+    }
+
+    private static async Task<List<SessionListDto>> ListSessionsBasicAsync(IQueryable<Session> q, CancellationToken ct)
+    {
+        var rows = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
+            .Select(x => new
+            {
+                x.Id,
+                x.Date,
+                x.StartTime,
+                x.Type,
+                x.Title,
+                x.Location,
+                x.CreatedAt,
+                BookingCount = x.Bookings.Count,
+                AttendanceCount = x.Attendances.Count,
+            })
+            .ToListAsync(ct);
+        return rows.Select(r => SessionDtoMapper.ToListDto(
+            r.Id, r.Date, r.StartTime, r.Type, r.Title, r.Location, r.CreatedAt,
+            r.BookingCount, r.AttendanceCount, new List<Guid>(), new List<string>())).ToList();
+    }
+
+    private static bool IsSchemaOrCoachJoinError(Exception ex)
+    {
+        for (var e = ex; e != null; e = e.InnerException)
+        {
+            if (e is PostgresException pg && IsSchemaMismatch(pg))
+                return true;
+        }
+        return false;
     }
 
     [HttpGet("{id:guid}")]
@@ -128,7 +177,7 @@ public class SessionsController : ControllerBase
         var bookings = x.Bookings.Select(b => new SessionBookingDto(b.Id, b.StudentId, b.Student.Name, PhoneLast4(b.Student.Phone))).ToList();
         var attendances = x.Attendances.Select(a => new AttendanceDto(a.Id, a.StudentId, a.Student.Name, a.Present, a.SessionsConsumed)).ToList();
         var assigned = x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => new AssignedCoachDto(sc.CoachId, sc.Coach.Name)).ToList();
-        return Ok(new SessionDetailDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, bookings, attendances, assigned, x.CreatedAt, canMark));
+        return Ok(SessionDtoMapper.ToDetailDto(x, bookings, attendances, assigned, canMark));
     }
 
     private static string? PhoneLast4(string? phone)
@@ -151,11 +200,21 @@ public class SessionsController : ControllerBase
         var coachIds = NormalizeCoachIds(request.CoachIds, _tenant.TenantId!.Value);
         if (!await AreCoachIdsInClubAsync(_tenant.TenantId!.Value, coachIds, ct))
             return BadRequest("One or more coaches are not part of this club.");
+        DateTime sessionDate;
+        try
+        {
+            sessionDate = SessionDateHelper.ParseDateOnly(request.Date);
+        }
+        catch (ArgumentException)
+        {
+            return BadRequest("Invalid date. Use YYYY-MM-DD.");
+        }
+
         var session = new Session
         {
             Id = Guid.NewGuid(),
             TenantId = _tenant.TenantId.Value,
-            Date = DateTime.SpecifyKind(request.Date.Date, DateTimeKind.Utc),
+            Date = sessionDate,
             StartTime = startTime,
             Type = sessionType,
             Title = request.Title,
@@ -172,7 +231,8 @@ public class SessionsController : ControllerBase
             .OrderBy(a => a.Name)
             .ToListAsync(ct);
         var canMark = ClubStaffPermissions.IsClubOwner(_tenant) || ClubStaffPermissions.IsAdminActingAsTenant(_tenant) || coachIds.Contains(_tenant.UserId!.Value);
-        return CreatedAtAction(nameof(Get), new { id = session.Id }, new SessionDetailDto(session.Id, session.Date, session.StartTime, session.Type.ToString(), session.Title, session.Location, new List<SessionBookingDto>(), new List<AttendanceDto>(), assigned, session.CreatedAt, canMark));
+        return CreatedAtAction(nameof(Get), new { id = session.Id },
+            SessionDtoMapper.ToDetailDto(session, new List<SessionBookingDto>(), new List<AttendanceDto>(), assigned, canMark));
     }
 
     [HttpPut("{id:guid}")]
@@ -188,7 +248,14 @@ public class SessionsController : ControllerBase
         if (!TimeSpan.TryParse(request.StartTime, out var startTime)) startTime = x.StartTime;
         if (!Enum.TryParse<SessionType>(request.Type, true, out var sessionType))
             return BadRequest("Invalid session type. Use Group or Private.");
-        x.Date = DateTime.SpecifyKind(request.Date.Date, DateTimeKind.Utc);
+        try
+        {
+            x.Date = SessionDateHelper.ParseDateOnly(request.Date);
+        }
+        catch (ArgumentException)
+        {
+            return BadRequest("Invalid date. Use YYYY-MM-DD.");
+        }
         x.StartTime = startTime;
         x.Type = sessionType;
         x.Title = request.Title;
@@ -210,7 +277,7 @@ public class SessionsController : ControllerBase
             .OrderBy(a => a.Name)
             .ToListAsync(ct);
         var canMark = await CanTakeAttendanceForSessionAsync(x, ct);
-        return Ok(new SessionDetailDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, bookings, attendances, assigned, x.CreatedAt, canMark));
+        return Ok(SessionDtoMapper.ToDetailDto(x, bookings, attendances, assigned, canMark));
     }
 
     [HttpDelete("{id:guid}")]

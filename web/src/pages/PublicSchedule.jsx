@@ -3,20 +3,12 @@ import { useParams } from 'react-router-dom'
 import { scheduleApi } from '../api'
 import LinkShare from '../components/LinkShare'
 import { resolvePrimaryColor } from '../constants/theme'
+import { formatSessionDate, formatSessionTime } from '../utils/sessionFormat'
 
 /** Avoid shadowing real app routes if someone uses these as slugs. */
 const RESERVED_SCHEDULE_KEYS = new Set([
   'login', 'register', 'admin', 'settings', 'students', 'packages', 'subscriptions', 'sessions', 'api', 'uploads', 'p', '',
 ])
-
-function formatSessionTime(s) {
-  const t = s.startTime
-  if (typeof t === 'string') return t.slice(0, 5)
-  const secs = typeof t === 'object' && t != null && 'hours' in t ? t.hours * 3600 + t.minutes * 60 + (t.seconds || 0) : Number(t) || 0
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
 
 export default function PublicSchedule() {
   const { scheduleKey } = useParams()
@@ -164,7 +156,7 @@ export default function PublicSchedule() {
             <div key={s.id} className="border rounded-xl p-4 flex flex-col gap-2">
               <div className="font-medium">{s.title}</div>
               <div className="text-sm text-gray-600">
-                {new Date(s.date).toLocaleDateString()} at {formatSessionTime(s)}
+                {formatSessionDate(s.date)} at {formatSessionTime(s)}
                 {s.location ? ` · ${s.location}` : ''} · {s.type}
               </div>
               {s.coachNames?.length > 0 && (

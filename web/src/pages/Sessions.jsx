@@ -5,6 +5,8 @@ import { useAuth } from '../AuthContext'
 import { useAcademyPermissions } from '../hooks/useAcademyPermissions'
 import { useAppPaths } from '../hooks/useAppPaths'
 import { FiCalendar, FiCheckCircle, FiClock, FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi'
+import { localDateInputValue } from '../utils/dateKey'
+import { formatSessionDate, formatSessionTime, sessionDateForInput } from '../utils/sessionFormat'
 
 export default function Sessions() {
   const paths = useAppPaths()
@@ -21,7 +23,7 @@ export default function Sessions() {
   const [modal, setModal] = useState(null)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
+    date: localDateInputValue(),
     startTime: '09:00',
     type: 'Group',
     title: '',
@@ -31,11 +33,17 @@ export default function Sessions() {
 
   function load() {
     const now = new Date()
-    const from = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString().slice(0, 10)
-    const to = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString().slice(0, 10)
+    const from = localDateInputValue(new Date(now.getFullYear(), now.getMonth() - 3, 1))
+    const to = localDateInputValue(new Date(now.getFullYear(), now.getMonth() + 2, 0))
     const params = { from, to }
     if (filterCoachId) params.assignedCoachId = filterCoachId
-    sessionsApi.list(params).then(setList).catch(e => setErr(e instanceof Error ? e.message : 'Failed'))
+    sessionsApi
+      .list(params)
+      .then((data) => {
+        setList(data)
+        setErr('')
+      })
+      .catch((e) => setErr(e instanceof Error ? e.message : 'Failed'))
   }
 
   useEffect(() => {
@@ -55,15 +63,13 @@ export default function Sessions() {
   }, [canManageSessions])
 
   function formatRowTime(s) {
-    const t = s.startTime
-    if (typeof t === 'string') return t
-    return `${String(Math.floor(t / 3600)).padStart(2, '0')}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}`
+    return formatSessionTime(s)
   }
 
   function openCreate() {
     const ownerId = coach?.id ? String(coach.id) : ''
     setForm({
-      date: new Date().toISOString().slice(0, 10),
+      date: localDateInputValue(),
       startTime: '09:00',
       type: 'Group',
       title: '',
@@ -75,12 +81,10 @@ export default function Sessions() {
   }
 
   function openEdit(s) {
-    const d = new Date(s.date)
-    const t = s.startTime
-    const time = typeof t === 'string' ? (t.length >= 5 ? t.slice(0, 5) : t) : formatRowTime(s)
+    const time = formatSessionTime(s)
     const ids = (s.assignedCoachIds || []).map(String)
     setForm({
-      date: d.toISOString().slice(0, 10),
+      date: sessionDateForInput(s.date),
       startTime: time,
       type: s.type,
       title: s.title,
@@ -233,7 +237,7 @@ export default function Sessions() {
             <tbody>
               {shownSessions.map(s => (
                 <tr key={s.id} className="border-b last:border-0">
-                  <td className="p-3">{new Date(s.date).toLocaleDateString()}</td>
+                  <td className="p-3">{formatSessionDate(s.date)}</td>
                   <td className="p-3">{formatRowTime(s)}</td>
                   <td className="p-3">{s.type}</td>
                   <td className="p-3">{s.title}</td>
@@ -277,7 +281,7 @@ export default function Sessions() {
               <div key={s.id} className="bg-white rounded-2xl border p-4 shadow-sm border-brand-subtle">
                 <div className="font-semibold">{s.title}</div>
                 <div className="text-sm text-gray-600 mt-1">
-                  {new Date(s.date).toLocaleDateString()} at {time} · {s.type}
+                  {formatSessionDate(s.date)} at {time} · {s.type}
                   {s.location ? ` · ${s.location}` : ''}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">Coaches: {coachNames(s)}</div>

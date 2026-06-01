@@ -28,39 +28,57 @@ public class ScheduleController : ControllerBase
         var q = _db.Sessions.AsNoTracking().Where(s => s.TenantId == coach.Id);
         if (from.HasValue)
         {
-            var fromUtc = DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc);
+            var fromUtc = SessionDateHelper.ToUtcDateOnly(from.Value);
             q = q.Where(x => x.Date >= fromUtc);
         }
         if (to.HasValue)
         {
-            var toUtc = DateTime.SpecifyKind(to.Value.Date, DateTimeKind.Utc);
+            var toUtc = SessionDateHelper.ToUtcDateOnly(to.Value);
             q = q.Where(x => x.Date <= toUtc);
         }
 
         List<SessionListDto> sessions;
         try
         {
-            sessions = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
-                .Select(x => new SessionListDto(
+            var rows = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
+                .Select(x => new
+                {
                     x.Id,
                     x.Date,
                     x.StartTime,
-                    x.Type.ToString(),
+                    x.Type,
                     x.Title,
                     x.Location,
                     x.CreatedAt,
-                    x.Bookings.Count,
-                    x.Attendances.Count,
-                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.CoachId).ToList(),
-                    x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.Coach.Name).ToList()
-                ))
+                    BookingCount = x.Bookings.Count,
+                    AttendanceCount = x.Attendances.Count,
+                    CoachIds = x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.CoachId).ToList(),
+                    CoachNames = x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.Coach.Name).ToList(),
+                })
                 .ToListAsync(ct);
+            sessions = rows.Select(r => SessionDtoMapper.ToListDto(
+                r.Id, r.Date, r.StartTime, r.Type, r.Title, r.Location, r.CreatedAt,
+                r.BookingCount, r.AttendanceCount, r.CoachIds, r.CoachNames)).ToList();
         }
         catch (PostgresException ex) when (ex.SqlState is "42P01" or "42703")
         {
-            sessions = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
-                .Select(x => new SessionListDto(x.Id, x.Date, x.StartTime, x.Type.ToString(), x.Title, x.Location, x.CreatedAt, 0, 0, new List<Guid>(), new List<string>()))
+            var rows = await q.OrderBy(x => x.Date).ThenBy(x => x.StartTime)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.Date,
+                    x.StartTime,
+                    x.Type,
+                    x.Title,
+                    x.Location,
+                    x.CreatedAt,
+                    BookingCount = x.Bookings.Count,
+                    AttendanceCount = x.Attendances.Count,
+                })
                 .ToListAsync(ct);
+            sessions = rows.Select(r => SessionDtoMapper.ToListDto(
+                r.Id, r.Date, r.StartTime, r.Type, r.Title, r.Location, r.CreatedAt,
+                r.BookingCount, r.AttendanceCount, new List<Guid>(), new List<string>())).ToList();
         }
 
         var packages = await _db.Packages.AsNoTracking()
