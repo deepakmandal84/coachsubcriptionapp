@@ -1,5 +1,5 @@
 export function isImperial(unit) {
-  return String(unit || 'Metric').toLowerCase() === 'imperial'
+  return String(unit || 'Imperial').toLowerCase() !== 'metric'
 }
 
 export function weightLabel(unit) {

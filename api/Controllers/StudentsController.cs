@@ -132,7 +132,7 @@ public class StudentsController : ControllerBase
     }
 
     static MeasurementUnit ParseMeasurementUnit(string? value) =>
-        Enum.TryParse<MeasurementUnit>(value, true, out var u) ? u : MeasurementUnit.Metric;
+        Enum.TryParse<MeasurementUnit>(value, true, out var u) ? u : MeasurementUnit.Imperial;
 
     [HttpPost("class-usage")]
     public async Task<ActionResult<BatchClassUsageResponse>> BatchClassUsage([FromBody] BatchClassUsageRequest request, CancellationToken ct)

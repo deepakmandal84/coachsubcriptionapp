@@ -4,6 +4,7 @@ import { parentApi } from '../api'
 import { resolvePrimaryColor } from '../constants/theme'
 import { useBrandTheme } from '../hooks/useBrandTheme'
 import { ParentPortalProvider } from '../context/ParentPortalContext'
+import { ParentProgressProvider } from '../context/ParentProgressContext'
 import ParentPortalShell from '../components/parentPortal/ParentPortalShell'
 import Card from '../components/ui/Card'
 
@@ -63,8 +64,6 @@ export default function ParentPortal() {
     }
   }
 
-  const shareUrl = typeof window !== 'undefined' ? window.location.href.split('?')[0] : ''
-
   if (err && !data) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-slate-100">
@@ -89,7 +88,6 @@ export default function ParentPortal() {
     token,
     data,
     primary,
-    shareUrl,
     reloadAll,
     sessions,
     attendedClasses,
@@ -102,7 +100,9 @@ export default function ParentPortal() {
 
   return (
     <ParentPortalProvider value={portalValue}>
-      <ParentPortalShell />
+      <ParentProgressProvider token={token}>
+        <ParentPortalShell />
+      </ParentProgressProvider>
     </ParentPortalProvider>
   )
 }

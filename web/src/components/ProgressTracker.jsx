@@ -113,7 +113,7 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
   }, [load])
 
   const profile = summary?.profile
-  const unit = profile?.measurementUnit || 'Metric'
+  const unit = profile?.measurementUnit || 'Imperial'
   const displayName = studentName || summary?.studentName || 'Client'
   const chart = summary?.chart
   const delta = summary?.latestDelta
@@ -254,8 +254,8 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
             className="w-36"
             aria-label="Units"
           >
-            <option value="Metric">Metric (kg, cm)</option>
             <option value="Imperial">Imperial (lb, in)</option>
+            <option value="Metric">Metric (kg, cm)</option>
           </Select>
           <Button onClick={openAdd}>
             <FiPlus />

@@ -15,7 +15,7 @@ public class Student
     public string? Notes { get; set; }
     public string? Tags { get; set; }
     public StudentStatus Status { get; set; } = StudentStatus.Active;
-    public MeasurementUnit MeasurementUnit { get; set; } = MeasurementUnit.Metric;
+    public MeasurementUnit MeasurementUnit { get; set; } = MeasurementUnit.Imperial;
     public StudentGender Gender { get; set; } = StudentGender.Unspecified;
     /// <summary>Height stored in centimeters.</summary>
     public decimal? HeightCm { get; set; }

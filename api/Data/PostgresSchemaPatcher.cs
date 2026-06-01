@@ -213,7 +213,8 @@ public static class PostgresSchemaPatcher
     {
         await db.Database.ExecuteSqlRawAsync(
             """
-            ALTER TABLE students ADD COLUMN IF NOT EXISTS "MeasurementUnit" integer NOT NULL DEFAULT 0;
+            ALTER TABLE students ADD COLUMN IF NOT EXISTS "MeasurementUnit" integer NOT NULL DEFAULT 1;
+            ALTER TABLE students ALTER COLUMN "MeasurementUnit" SET DEFAULT 1;
             """,
             cancellationToken: ct);
 

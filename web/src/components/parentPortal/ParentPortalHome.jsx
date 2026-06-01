@@ -1,11 +1,10 @@
 import { FiUser } from 'react-icons/fi'
 import Badge from '../ui/Badge'
-import LinkShare from '../LinkShare'
 import { useParentPortal } from '../../context/ParentPortalContext'
 import { formatClassUsage } from '../../utils/classUsage'
 
 export default function ParentPortalHome() {
-  const { data, primary, shareUrl, requestRenewal, requesting, requestSent } = useParentPortal()
+  const { data, primary, requestRenewal, requesting, requestSent } = useParentPortal()
 
   const paymentDue = data.paymentStatus === 'Due'
 
@@ -74,16 +73,6 @@ export default function ParentPortalHome() {
         >
           {requestSent ? 'Renewal request sent' : requesting ? 'Sending…' : 'Request renewal'}
         </button>
-      </section>
-
-      <section className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-4">
-        <p className="text-xs font-medium text-slate-500 mb-2">Share this private page</p>
-        <LinkShare
-          url={shareUrl}
-          title="My client portal"
-          text={`Portal for ${data.studentName}`}
-          variant="compact"
-        />
       </section>
     </div>
   )
