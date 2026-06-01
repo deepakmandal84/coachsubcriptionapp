@@ -235,6 +235,72 @@ public class SessionsController : ControllerBase
             SessionDtoMapper.ToDetailDto(session, new List<SessionBookingDto>(), new List<AttendanceDto>(), assigned, canMark));
     }
 
+    [HttpPost("bulk")]
+    public async Task<ActionResult<BulkCreateSessionsResponse>> CreateBulk([FromBody] BulkCreateSessionsRequest request, CancellationToken ct)
+    {
+        if (!await ClubStaffPermissions.CanCreateSessionsAsync(_db, _tenant, ct)) return Forbid();
+        if (request.Dates == null || request.Dates.Count == 0)
+            return BadRequest("Select at least one date.");
+        if (request.Dates.Count > 62)
+            return BadRequest("At most 62 dates per bulk create.");
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return BadRequest("Title is required.");
+        if (!TimeSpan.TryParse(request.StartTime, out var startTime)) startTime = TimeSpan.Zero;
+        if (!Enum.TryParse<SessionType>(request.Type, true, out var sessionType))
+            return BadRequest("Invalid session type. Use Group or Private.");
+
+        var coachIds = NormalizeCoachIds(request.CoachIds, _tenant.TenantId!.Value);
+        if (!await AreCoachIdsInClubAsync(_tenant.TenantId!.Value, coachIds, ct))
+            return BadRequest("One or more coaches are not part of this club.");
+
+        var distinctDates = new List<DateTime>();
+        foreach (var raw in request.Dates)
+        {
+            try
+            {
+                var d = SessionDateHelper.ParseDateOnly(raw);
+                if (!distinctDates.Any(x => x == d))
+                    distinctDates.Add(d);
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest($"Invalid date: {raw}. Use YYYY-MM-DD.");
+            }
+        }
+
+        if (distinctDates.Count == 0)
+            return BadRequest("No valid dates provided.");
+
+        var tenantId = _tenant.TenantId!.Value;
+        var sessions = distinctDates.Select(d => new Session
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            Date = d,
+            StartTime = startTime,
+            Type = sessionType,
+            Title = request.Title.Trim(),
+            Location = request.Location,
+            CreatedAt = DateTime.UtcNow,
+        }).ToList();
+
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        _db.Sessions.AddRange(sessions);
+        await _db.SaveChangesAsync(ct);
+
+        var links = new List<SessionCoach>();
+        foreach (var session in sessions)
+        {
+            foreach (var cid in coachIds.Distinct())
+                links.Add(new SessionCoach { SessionId = session.Id, CoachId = cid });
+        }
+        _db.SessionCoaches.AddRange(links);
+        await _db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+
+        return Ok(new BulkCreateSessionsResponse(sessions.Count));
+    }
+
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<SessionDetailDto>> Update(Guid id, [FromBody] UpdateSessionRequest request, CancellationToken ct)
     {

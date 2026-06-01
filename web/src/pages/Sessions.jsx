@@ -4,9 +4,11 @@ import { sessionsApi, coachApi } from '../api'
 import { useAuth } from '../AuthContext'
 import { useAcademyPermissions } from '../hooks/useAcademyPermissions'
 import { useAppPaths } from '../hooks/useAppPaths'
-import { FiCalendar, FiCheckCircle, FiClock, FiEdit2, FiTrash2, FiUsers } from 'react-icons/fi'
+import { FiCalendar, FiCheckCircle, FiClock, FiEdit2, FiLayers, FiTrash2, FiUsers } from 'react-icons/fi'
 import { localDateInputValue } from '../utils/dateKey'
 import { formatSessionDate, formatSessionTime, sessionDateForInput } from '../utils/sessionFormat'
+import BulkSessionsModal from '../components/sessions/BulkSessionsModal'
+import { useToast } from '../context/ToastContext'
 
 export default function Sessions() {
   const paths = useAppPaths()
@@ -14,6 +16,7 @@ export default function Sessions() {
   const isStaffCoach = coach?.role === 'Coach' && !!coach?.clubTenantId
   const isClubOwner = coach?.role === 'Coach' && !coach?.clubTenantId
   const { canManageSessions } = useAcademyPermissions()
+  const toast = useToast()
   const [filterCoachId, setFilterCoachId] = useState('')
   const staffFilterDefaultDone = useRef(false)
   const [list, setList] = useState([])
@@ -21,6 +24,7 @@ export default function Sessions() {
   const [err, setErr] = useState('')
   const [activeTab, setActiveTab] = useState('upcoming')
   const [modal, setModal] = useState(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({
     date: localDateInputValue(),
@@ -173,7 +177,19 @@ export default function Sessions() {
           Sessions
         </h1>
         {activeTab === 'upcoming' && canManageSessions && (
-          <button onClick={openCreate} className="px-4 py-2 btn-brand text-white rounded-xl hover:opacity-95 shadow-sm">New session</button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setBulkOpen(true)}
+              className="px-4 py-2 border border-slate-200 bg-white text-slate-800 rounded-xl hover:bg-slate-50 shadow-sm inline-flex items-center gap-2"
+            >
+              <FiLayers />
+              Bulk add
+            </button>
+            <button onClick={openCreate} className="px-4 py-2 btn-brand text-white rounded-xl hover:opacity-95 shadow-sm">
+              New session
+            </button>
+          </div>
         )}
       </div>
       {err && <p className="text-red-600 mb-2">{err}</p>}
@@ -315,6 +331,21 @@ export default function Sessions() {
           )}
         </div>
       </div>
+
+      {bulkOpen && (
+        <BulkSessionsModal
+          open={bulkOpen}
+          onClose={() => setBulkOpen(false)}
+          team={team}
+          canManageSessions={canManageSessions}
+          coachId={coach?.id}
+          existingSessions={list}
+          onCreated={(count) => {
+            toast.success(`Created ${count} session${count === 1 ? '' : 's'}`)
+            load()
+          }}
+        />
+      )}
 
       {modal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" onClick={() => setModal(null)}>

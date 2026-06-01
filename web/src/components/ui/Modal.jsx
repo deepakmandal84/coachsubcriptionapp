@@ -4,7 +4,7 @@ export default function Modal({ title, children, onClose, footer, wide }) {
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={onClose} aria-hidden="true" />
       <div
         className={`relative bg-white w-full sm:rounded-xl shadow-xl max-h-[90vh] overflow-hidden flex flex-col animate-in ${
-          wide ? 'sm:max-w-xl' : 'sm:max-w-md'
+          wide ? 'sm:max-w-3xl' : 'sm:max-w-md'
         } rounded-t-2xl sm:rounded-b-xl`}
         onClick={(e) => e.stopPropagation()}
       >

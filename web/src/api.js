@@ -133,6 +133,7 @@ export const sessionsApi = {
   list: (params) => api(`/sessions${toQueryString(params)}`),
   get: (id) => api(`/sessions/${id}`),
   create: (body) => api('/sessions', { method: 'POST', body: JSON.stringify(body) }),
+  createBulk: (body) => api('/sessions/bulk', { method: 'POST', body: JSON.stringify(body) }),
   update: (id, body) => api(`/sessions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (id) => api(`/sessions/${id}`, { method: 'DELETE' }),
   getAttendance: (id) => api(`/sessions/${id}/attendance`),

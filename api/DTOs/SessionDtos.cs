@@ -6,6 +6,8 @@ public record AssignedCoachDto(Guid Id, string Name);
 public record SessionDetailDto(Guid Id, string Date, string StartTime, string Type, string Title, string? Location, List<SessionBookingDto> Bookings, List<AttendanceDto> Attendances, List<AssignedCoachDto> AssignedCoaches, DateTime CreatedAt, bool CanMarkAttendance);
 public record CreateSessionRequest(string Date, string StartTime, string Type, string Title, string? Location, List<Guid>? CoachIds);
 public record UpdateSessionRequest(string Date, string StartTime, string Type, string Title, string? Location, List<Guid>? CoachIds);
+public record BulkCreateSessionsRequest(List<string> Dates, string StartTime, string Type, string Title, string? Location, List<Guid>? CoachIds);
+public record BulkCreateSessionsResponse(int CreatedCount);
 public record AttendanceDto(Guid Id, Guid StudentId, string StudentName, bool Present, int SessionsConsumed);
 public record SetAttendanceRequest(List<AttendanceItemRequest> Items);
 public record AttendanceItemRequest(Guid StudentId, bool Present, int SessionsConsumed = 1);
