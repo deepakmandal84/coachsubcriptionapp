@@ -20,3 +20,14 @@ public record StudentSessionMatrixRowDto(Guid StudentId, string StudentName, Lis
 public record StudentSessionMatrixDto(
     List<SessionMatrixMonthDto> Months,
     List<StudentSessionMatrixRowDto> Rows);
+
+public record StudentSessionAttendanceEntryDto(string Date, string? Time, string Title, int SessionsConsumed);
+
+public record StudentSessionMonthDetailDto(
+    Guid StudentId,
+    string StudentName,
+    int Year,
+    int Month,
+    string MonthLabel,
+    int TotalSessions,
+    List<StudentSessionAttendanceEntryDto> Entries);

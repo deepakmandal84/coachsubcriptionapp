@@ -87,4 +87,67 @@ public static class StudentSessionMatrixService
 
         return new StudentSessionMatrixDto(months, rows);
     }
+
+    public static async Task<StudentSessionMonthDetailDto?> GetMonthDetailAsync(
+        AppDbContext db,
+        Guid tenantId,
+        Guid studentId,
+        int year,
+        int month,
+        CancellationToken ct)
+    {
+        if (month is < 1 or > 12) return null;
+
+        var student = await db.Students.AsNoTracking()
+            .Where(s => s.Id == studentId && s.TenantId == tenantId)
+            .Select(s => new { s.Id, s.Name })
+            .FirstOrDefaultAsync(ct);
+        if (student == null) return null;
+
+        var monthStart = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var monthEnd = monthStart.AddMonths(1);
+
+        var raw = await (
+            from a in db.Attendances.AsNoTracking()
+            join sess in db.Sessions.AsNoTracking() on a.SessionId equals sess.Id
+            where a.StudentId == studentId
+                  && a.Present
+                  && sess.TenantId == tenantId
+                  && sess.Date >= monthStart
+                  && sess.Date < monthEnd
+            orderby sess.Date, sess.StartTime
+            select new
+            {
+                sess.Date,
+                sess.StartTime,
+                sess.Title,
+                a.SessionsConsumed,
+            }
+        ).ToListAsync(ct);
+
+        var entries = raw.Select(x => new StudentSessionAttendanceEntryDto(
+            x.Date.ToString("yyyy-MM-dd"),
+            FormatSessionTime(x.StartTime),
+            string.IsNullOrWhiteSpace(x.Title) ? "Session" : x.Title.Trim(),
+            x.SessionsConsumed)).ToList();
+
+        var label = monthStart.ToString("MMM yyyy");
+        var total = entries.Sum(e => e.SessionsConsumed);
+
+        return new StudentSessionMonthDetailDto(
+            student.Id,
+            student.Name,
+            year,
+            month,
+            label,
+            total,
+            entries);
+    }
+
+    static string? FormatSessionTime(TimeSpan time)
+    {
+        if (time == TimeSpan.Zero) return null;
+        var dt = DateTime.Today.Add(time);
+        return dt.ToString("h:mm tt");
+    }
 }

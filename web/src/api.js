@@ -82,6 +82,8 @@ export const studentsApi = {
   batchClassUsage: (studentIds) =>
     api('/students/class-usage', { method: 'POST', body: JSON.stringify({ studentIds }) }),
   sessionMatrix: (params) => api(`/students/session-matrix${toQueryString(params)}`),
+  sessionMatrixMonth: (studentId, params) =>
+    api(`/students/${studentId}/session-matrix/month${toQueryString(params)}`),
   setMeasurementUnit: (id, measurementUnit) =>
     api(`/students/${id}/measurement-unit`, {
       method: 'PUT',

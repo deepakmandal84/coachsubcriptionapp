@@ -143,6 +143,20 @@ public class StudentsController : ControllerBase
         return Ok(matrix);
     }
 
+    [HttpGet("{id:guid}/session-matrix/month")]
+    public async Task<ActionResult<StudentSessionMonthDetailDto>> SessionMatrixMonth(
+        Guid id,
+        [FromQuery] int year,
+        [FromQuery] int month,
+        CancellationToken ct)
+    {
+        if (_tenant.TenantId == null) return Forbid();
+        var detail = await StudentSessionMatrixService.GetMonthDetailAsync(
+            _db, _tenant.TenantId.Value, id, year, month, ct);
+        if (detail == null) return NotFound();
+        return Ok(detail);
+    }
+
     [HttpPost("class-usage")]
     public async Task<ActionResult<BatchClassUsageResponse>> BatchClassUsage([FromBody] BatchClassUsageRequest request, CancellationToken ct)
     {
