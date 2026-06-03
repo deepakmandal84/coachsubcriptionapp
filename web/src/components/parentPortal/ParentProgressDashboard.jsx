@@ -10,6 +10,7 @@ import Input from '../ui/Input'
 import { formatWeight, isImperial } from '../../utils/progressUnits'
 import { useToast } from '../../context/ToastContext'
 import { formatError } from '../../utils/formatError'
+import { formatBmiWithSuggestion } from '../../utils/dietCalc'
 
 function SideStat({ label, value, hint }) {
   return (
@@ -61,7 +62,8 @@ export default function ParentProgressDashboard({ onLogCheckIn }) {
   const { primary } = useParentPortal()
   const toast = useToast()
   const [searchParams] = useSearchParams()
-  const { token, summary, profile, unit, stats, loading, err, setErr, reload, openCheckIn } = useParentProgress()
+  const { token, summary, profile, unit, stats, loading, err, setErr, reload, openCheckIn, profileFocusTick } =
+    useParentProgress()
 
   const [profileForm, setProfileForm] = useState({ gender: 'Unspecified', height: '', dateOfBirth: '' })
   const [profileBusy, setProfileBusy] = useState(false)
@@ -79,6 +81,10 @@ export default function ParentProgressDashboard({ onLogCheckIn }) {
   useEffect(() => {
     if (searchParams.get('action') === 'checkin') openCheckIn()
   }, [searchParams, openCheckIn])
+
+  useEffect(() => {
+    if (profileFocusTick > 0) setProfileOpen(true)
+  }, [profileFocusTick])
 
   async function handleSaveProfile(e) {
     e.preventDefault()
@@ -142,7 +148,11 @@ export default function ParentProgressDashboard({ onLogCheckIn }) {
             <SideStat
               label="Starting"
               value={stats.startWeight != null ? formatWeight(stats.startWeight, unit) : '—'}
-              hint={stats.startBmi != null ? `BMI ${stats.startBmi.toFixed(1)}` : stats.startLabel}
+              hint={
+                stats.startBmi != null
+                  ? `BMI ${formatBmiWithSuggestion(stats.startBmi) ?? stats.startBmi.toFixed(1)}`
+                  : stats.startLabel
+              }
             />
 
             <div className="flex flex-col items-center">
@@ -206,7 +216,10 @@ export default function ParentProgressDashboard({ onLogCheckIn }) {
           {stats.currentBmi != null && (
             <div className="flex flex-wrap items-center justify-center gap-2 py-1">
               <span className="text-sm text-slate-600">
-                BMI <span className="font-semibold text-slate-900 tabular-nums">{stats.currentBmi.toFixed(1)}</span>
+                BMI{' '}
+                <span className="font-semibold text-slate-900 tabular-nums">
+                  {formatBmiWithSuggestion(stats.currentBmi) ?? stats.currentBmi.toFixed(1)}
+                </span>
               </span>
               {stats.bmiInfo && (
                 <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full border ${stats.bmiInfo.badge}`}>
@@ -241,7 +254,7 @@ export default function ParentProgressDashboard({ onLogCheckIn }) {
         </p>
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div id="parent-body-profile" className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <button
           type="button"
           className="w-full flex items-center justify-between px-4 py-3.5 text-sm font-medium text-slate-800 hover:bg-slate-50/80 transition"

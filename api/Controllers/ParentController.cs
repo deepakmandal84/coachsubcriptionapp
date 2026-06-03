@@ -175,11 +175,7 @@ public class ParentController : ControllerBase
             .FirstOrDefaultAsync(s => s.Id == link.StudentId && s.TenantId == link.TenantId, ct);
         if (student == null) return NotFound();
 
-        var measurementsCm = ProgressMeasurementHelper.FromUserMeasurements(request.Measurements, student.MeasurementUnit);
-        var weightKg = ProgressMeasurementHelper.KgFromUserWeight(request.Weight, student.MeasurementUnit);
-        var calc = BodyFatCalculator.Preview(student, measurementsCm, weightKg);
-        var (_, method) = BodyFatCalculator.Resolve(null, student, measurementsCm, weightKg);
-        return Ok(new BodyFatPreviewDto(calc, method?.ToString(), Array.Empty<string>()));
+        return Ok(BodyCompositionHelper.BuildPreview(student, request));
     }
 
     [HttpPost("{token}/progress")]

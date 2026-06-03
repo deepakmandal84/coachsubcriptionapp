@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FiActivity, FiPlus, FiTrash2, FiTrendingDown, FiTrendingUp } from 'react-icons/fi'
+import { FiActivity, FiEdit2, FiPlus, FiTrash2, FiTrendingDown, FiTrendingUp } from 'react-icons/fi'
 import { progressApi, parentApi } from '../api'
 import Card from './ui/Card'
 import Button from './ui/Button'
@@ -12,18 +12,18 @@ import ProgressLineChart from './ProgressLineChart'
 import { useToast } from '../context/ToastContext'
 import { formatError } from '../utils/formatError'
 import {
-  BODY_FAT_MEASUREMENT_FIELDS,
-  OTHER_MEASUREMENT_FIELDS,
   emptyMeasurements,
   formatDelta,
   formatWeight,
   formatLength,
   heightLabel,
-  lengthLabel,
+  measurementsFromDto,
   measurementsToPayload,
   weightLabel,
 } from '../utils/progressUnits'
-import { bodyFatMethodLabel, previewBodyFat } from '../utils/bodyFatCalc'
+import { bodyFatMethodLabel } from '../utils/bodyFatCalc'
+import { computeBodyCompositionSummary } from '../utils/bodyCompositionResults'
+import LogCheckInModalContent from './LogCheckInModalContent'
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
@@ -89,6 +89,7 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [modal, setModal] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm())
   const [busy, setBusy] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
@@ -132,9 +133,9 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
     })
   }, [profile])
 
-  const autoBodyFat = useMemo(
+  const compositionSummary = useMemo(
     () =>
-      previewBodyFat({
+      computeBodyCompositionSummary({
         gender: profileForm.gender,
         height: profileForm.height,
         dateOfBirth: profileForm.dateOfBirth,
@@ -144,6 +145,10 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
       }),
     [profileForm, unit, form.weight, form.measurements]
   )
+
+  function scrollToProfile() {
+    document.getElementById('body-profile')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   async function handleSaveProfile(e) {
     e.preventDefault()
@@ -176,7 +181,20 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
   }
 
   function openAdd() {
+    setEditingId(null)
     setForm(emptyForm())
+    setModal(true)
+  }
+
+  function openEdit(row) {
+    setEditingId(row.id)
+    setForm({
+      recordedOn: row.recordedOn ? row.recordedOn.slice(0, 10) : todayIso(),
+      weight: row.weight != null ? String(row.weight) : '',
+      bodyFatPercent: row.bodyFatPercent != null ? String(row.bodyFatPercent) : '',
+      notes: row.notes || '',
+      measurements: measurementsFromDto(row.measurements),
+    })
     setModal(true)
   }
 
@@ -192,10 +210,18 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
       notes: form.notes || null,
     }
     try {
-      if (mode === 'parent') await parentApi.createProgress(token, body)
-      else await progressApi.create(studentId, body)
+      if (mode === 'parent') {
+        await parentApi.createProgress(token, body)
+        toast.success('Done — check-in saved')
+      } else if (editingId) {
+        await progressApi.update(studentId, editingId, body)
+        toast.success('Done — check-in updated')
+      } else {
+        await progressApi.create(studentId, body)
+        toast.success('Done — check-in saved')
+      }
       setModal(false)
-      toast.success('Progress logged')
+      setEditingId(null)
       load()
     } catch (ex) {
       setErr(formatError(ex))
@@ -210,7 +236,7 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
     try {
       await progressApi.delete(studentId, deleteId)
       setDeleteId(null)
-      toast.success('Entry removed')
+      toast.success('Check-in deleted')
       load()
     } catch (ex) {
       setErr(formatError(ex))
@@ -270,7 +296,7 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
         </Alert>
       )}
 
-      <Card>
+      <Card id="body-profile">
         <div className="mb-4">
           <h2 className="font-semibold text-slate-900">Body profile</h2>
           <p className="text-sm text-slate-500 mt-0.5">Used for body fat estimates on each check-in.</p>
@@ -352,9 +378,19 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
 
       {chart && (
         <div className="grid lg:grid-cols-3 gap-4">
-          <ProgressLineChart title={weightLabel(unit)} points={chart.weight} color="bg-teal-600" />
-          <ProgressLineChart title="Body fat %" points={chart.bodyFat} color="bg-amber-500" />
-          <ProgressLineChart title={`Waist (${lengthLabel(unit)})`} points={chart.waist} color="bg-violet-500" />
+          <ProgressLineChart
+            title={weightLabel(unit)}
+            points={chart.weight}
+            color="bg-teal-600"
+            valueSuffix={unit === 'Imperial' ? ' lb' : ' kg'}
+          />
+          <ProgressLineChart title="Body fat %" points={chart.bodyFat} color="bg-amber-500" valueSuffix="%" />
+          <ProgressLineChart
+            title={`Waist (${lengthLabel(unit)})`}
+            points={chart.waist}
+            color="bg-violet-500"
+            valueSuffix={unit === 'Imperial' ? ' in' : ' cm'}
+          />
         </div>
       )}
 
@@ -373,7 +409,7 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
                   <th className="text-left p-3 font-medium text-slate-600">Method</th>
                   <th className="text-left p-3 font-medium text-slate-600">Waist</th>
                   <th className="text-left p-3 font-medium text-slate-600">Source</th>
-                  {mode === 'coach' && <th className="p-3 w-12" />}
+                  {mode === 'coach' && <th className="p-3 text-right font-medium text-slate-600">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -387,9 +423,14 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
                     <td className="p-3 text-slate-500 text-xs">{row.source === 'ParentPortal' ? 'Client' : 'Coach'}</td>
                     {mode === 'coach' && (
                       <td className="p-3">
-                        <Button variant="ghost" size="sm" className="text-red-600" onClick={() => setDeleteId(row.id)}>
-                          <FiTrash2 />
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="sm" title="Edit check-in" onClick={() => openEdit(row)}>
+                            <FiEdit2 />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-red-600" title="Delete check-in" onClick={() => setDeleteId(row.id)}>
+                            <FiTrash2 />
+                          </Button>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -402,94 +443,44 @@ export default function ProgressTracker({ mode, studentId, token, studentName, o
 
       {modal && (
         <Modal
-          title="Log check-in"
-          onClose={() => setModal(false)}
+          title={editingId ? 'Edit check-in' : 'Log check-in'}
+          onClose={() => {
+            setModal(false)
+            setEditingId(null)
+          }}
           wide
           footer={
             <div className="flex gap-2 justify-end">
-              <Button variant="secondary" onClick={() => setModal(false)}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setModal(false)
+                  setEditingId(null)
+                }}
+              >
                 Cancel
               </Button>
               <Button type="submit" form="progress-form" disabled={busy}>
-                {busy ? 'Saving…' : 'Save'}
+                {busy ? 'Saving…' : editingId ? 'Save changes' : 'Save check-in'}
               </Button>
             </div>
           }
         >
-          <form id="progress-form" onSubmit={handleSubmit} className="space-y-3">
-            <Input
-              label="Date *"
-              type="date"
-              value={form.recordedOn}
-              onChange={(e) => setForm((f) => ({ ...f, recordedOn: e.target.value }))}
-              required
+          <form id="progress-form" onSubmit={handleSubmit}>
+            <LogCheckInModalContent
+              form={form}
+              setForm={setForm}
+              unit={unit}
+              profile={{
+                gender: profileForm.gender,
+                height: profileForm.height === '' ? null : Number(profileForm.height),
+                dateOfBirth: profileForm.dateOfBirth || null,
+                ageYears: displayAge,
+              }}
+              compositionSummary={compositionSummary}
+              onEditProfile={scrollToProfile}
+              err={err}
             />
-            <div className="grid sm:grid-cols-2 gap-3">
-              <Input
-                label={weightLabel(unit)}
-                type="number"
-                step="0.1"
-                min="0"
-                value={form.weight}
-                onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
-              />
-              <div>
-                <Input
-                  label="Body fat % (optional)"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="100"
-                  value={form.bodyFatPercent}
-                  onChange={(e) => setForm((f) => ({ ...f, bodyFatPercent: e.target.value }))}
-                  placeholder={autoBodyFat.percent != null ? `Auto: ${autoBodyFat.percent}%` : 'Auto when possible'}
-                />
-                {form.bodyFatPercent === '' && autoBodyFat.percent != null && (
-                  <p className="text-xs text-brand mt-1">
-                    Estimated {autoBodyFat.percent}% ({bodyFatMethodLabel(autoBodyFat.method)})
-                  </p>
-                )}
-              </div>
-            </div>
-            <p className="text-sm font-medium text-slate-700">Circumferences for body fat ({lengthLabel(unit)})</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {BODY_FAT_MEASUREMENT_FIELDS.map(({ key, label }) => (
-                <Input
-                  key={key}
-                  label={label}
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={form.measurements[key]}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      measurements: { ...f.measurements, [key]: e.target.value },
-                    }))
-                  }
-                />
-              ))}
-            </div>
-            <p className="text-sm font-medium text-slate-700">Other measurements ({lengthLabel(unit)})</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {OTHER_MEASUREMENT_FIELDS.map(({ key, label }) => (
-                <Input
-                  key={key}
-                  label={label}
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={form.measurements[key]}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      measurements: { ...f.measurements, [key]: e.target.value },
-                    }))
-                  }
-                />
-              ))}
-            </div>
-            <Input label="Notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
           </form>
         </Modal>
       )}

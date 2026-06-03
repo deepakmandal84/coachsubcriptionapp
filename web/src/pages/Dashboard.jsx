@@ -8,7 +8,19 @@ import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
 import Alert from '../components/ui/Alert'
 import { TableSkeleton } from '../components/ui/Skeleton'
+import DailyBarChart from '../components/DailyBarChart'
 import { formatError } from '../utils/formatError'
+
+function dailyToChartPoints(rows) {
+  return (rows || []).map((d) => ({ label: d.date, value: d.count }))
+}
+
+function currentMonthCheckIns(data) {
+  if (data.checkInsCurrentMonth?.length) return data.checkInsCurrentMonth
+  const now = new Date()
+  const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return (data.checkInsPerDay || []).filter((d) => String(d.date).startsWith(prefix))
+}
 
 function StatCard({ label, value, hint, to }) {
   const inner = (
@@ -82,6 +94,16 @@ export default function Dashboard() {
           label="Revenue this month"
           value={`$${data.monthRevenue.toFixed(2)}`}
           to={insightsTo}
+        />
+      </div>
+
+      <div className="mb-8">
+        <DailyBarChart
+          title="Progress check-ins"
+          points={dailyToChartPoints(currentMonthCheckIns(data))}
+          color="bg-amber-500"
+          icon={FiBarChart2}
+          yAxisLabel="Check-ins"
         />
       </div>
 

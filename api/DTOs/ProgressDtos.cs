@@ -33,7 +33,21 @@ public record BodyFatPreviewRequest(
     decimal? Weight,
     BodyMeasurementsDto? Measurements);
 
-public record BodyFatPreviewDto(decimal? CalculatedPercent, string? Method, IReadOnlyList<string> MissingFields);
+public record BodyCompositionBreakdownDto(
+    decimal? NavyPercent,
+    decimal? BmiPercent,
+    string? Category,
+    decimal? IdealPercent,
+    decimal? FatMass,
+    decimal? LeanMass,
+    decimal? FatToLose,
+    string MassUnit);
+
+public record BodyFatPreviewDto(
+    decimal? CalculatedPercent,
+    string? Method,
+    IReadOnlyList<string> MissingFields,
+    BodyCompositionBreakdownDto? Breakdown = null);
 
 public record ProgressCheckInDto(
     Guid Id,

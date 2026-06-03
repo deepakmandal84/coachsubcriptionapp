@@ -2,23 +2,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { parentApi } from '../../api'
 import Modal from '../ui/Modal'
 import Button from '../ui/Button'
-import Input from '../ui/Input'
-import {
-  BODY_FAT_MEASUREMENT_FIELDS,
-  OTHER_MEASUREMENT_FIELDS,
-  emptyMeasurements,
-  lengthLabel,
-  measurementsToPayload,
-  weightLabel,
-} from '../../utils/progressUnits'
-import { bodyFatMethodLabel, previewBodyFat } from '../../utils/bodyFatCalc'
+import LogCheckInModalContent from '../LogCheckInModalContent'
+import { emptyMeasurements, measurementsToPayload } from '../../utils/progressUnits'
+import { computeBodyCompositionSummary } from '../../utils/bodyCompositionResults'
 import { formatError } from '../../utils/formatError'
+import { useToast } from '../../context/ToastContext'
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
 
-export default function CheckInFormModal({ open, onClose, token, unit, profile, onSaved }) {
+export default function CheckInFormModal({ open, onClose, token, unit, profile, onSaved, onEditProfile }) {
+  const toast = useToast()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [form, setForm] = useState({
@@ -51,9 +46,9 @@ export default function CheckInFormModal({ open, onClose, token, unit, profile, 
     }
   }, [open])
 
-  const autoBodyFat = useMemo(
+  const compositionSummary = useMemo(
     () =>
-      previewBodyFat({
+      computeBodyCompositionSummary({
         gender: profileForm.gender,
         height: profileForm.height,
         dateOfBirth: profileForm.dateOfBirth,
@@ -77,6 +72,7 @@ export default function CheckInFormModal({ open, onClose, token, unit, profile, 
     }
     try {
       await parentApi.createProgress(token, body)
+      toast.success('Done — check-in saved')
       onSaved?.()
       onClose()
     } catch (ex) {
@@ -104,79 +100,16 @@ export default function CheckInFormModal({ open, onClose, token, unit, profile, 
         </div>
       }
     >
-      <form id="parent-checkin-form" onSubmit={handleSubmit} className="space-y-3">
-        {err && <p className="text-sm text-red-600">{err}</p>}
-        <Input
-          label="Date *"
-          type="date"
-          value={form.recordedOn}
-          onChange={(e) => setForm((f) => ({ ...f, recordedOn: e.target.value }))}
-          required
+      <form id="parent-checkin-form" onSubmit={handleSubmit}>
+        <LogCheckInModalContent
+          form={form}
+          setForm={setForm}
+          unit={unit}
+          profile={profile}
+          compositionSummary={compositionSummary}
+          onEditProfile={onEditProfile}
+          err={err}
         />
-        <div className="grid sm:grid-cols-2 gap-3">
-          <Input
-            label={weightLabel(unit)}
-            type="number"
-            step="0.1"
-            min="0"
-            value={form.weight}
-            onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
-            required
-          />
-          <div>
-            <Input
-              label="Body fat % (optional)"
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={form.bodyFatPercent}
-              onChange={(e) => setForm((f) => ({ ...f, bodyFatPercent: e.target.value }))}
-              placeholder={autoBodyFat.percent != null ? `Auto: ${autoBodyFat.percent}%` : 'Auto when possible'}
-            />
-            {form.bodyFatPercent === '' && autoBodyFat.percent != null && (
-              <p className="text-xs text-brand mt-1">
-                Estimated {autoBodyFat.percent}% ({bodyFatMethodLabel(autoBodyFat.method)})
-              </p>
-            )}
-          </div>
-        </div>
-        <p className="text-sm font-medium text-slate-700">Measurements ({lengthLabel(unit)})</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {BODY_FAT_MEASUREMENT_FIELDS.map(({ key, label }) => (
-            <Input
-              key={key}
-              label={label}
-              type="number"
-              step="0.1"
-              min="0"
-              value={form.measurements[key]}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  measurements: { ...f.measurements, [key]: e.target.value },
-                }))
-              }
-            />
-          ))}
-          {OTHER_MEASUREMENT_FIELDS.map(({ key, label }) => (
-            <Input
-              key={key}
-              label={label}
-              type="number"
-              step="0.1"
-              min="0"
-              value={form.measurements[key]}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  measurements: { ...f.measurements, [key]: e.target.value },
-                }))
-              }
-            />
-          ))}
-        </div>
-        <Input label="Notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
       </form>
     </Modal>
   )

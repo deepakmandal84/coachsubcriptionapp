@@ -39,7 +39,42 @@ public class ReportsController : ControllerBase
             .Select(s => new ExpiringSoonItem(s.Id, s.Student.Name, s.Package.Name, s.ExpiryDate, s.RemainingSessions))
             .Take(20)
             .ToListAsync(ct);
-        return Ok(new DashboardDto(studentCount, activeSubs, paymentsDue, monthRevenue, expiringSoon));
+        var today = DateTime.UtcNow.Date;
+        const int chartDays = 30;
+        var chartStart = today.AddDays(-(chartDays - 1));
+
+        var sessionGrouped = await _db.Sessions.AsNoTracking()
+            .Where(s => s.Date >= chartStart && s.Date <= today)
+            .GroupBy(s => s.Date.Date)
+            .Select(g => new { Day = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var checkInGrouped = await _db.ProgressCheckIns.AsNoTracking()
+            .Where(p => p.RecordedOn >= chartStart && p.RecordedOn <= today)
+            .GroupBy(p => p.RecordedOn.Date)
+            .Select(g => new { Day = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var sessionsPerDay = FillDailySeries(chartStart, today, sessionGrouped.ToDictionary(x => x.Day, x => x.Count));
+        var checkInsPerDay = FillDailySeries(chartStart, today, checkInGrouped.ToDictionary(x => x.Day, x => x.Count));
+
+        var monthStart = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var checkInMonthGrouped = await _db.ProgressCheckIns.AsNoTracking()
+            .Where(p => p.RecordedOn >= monthStart && p.RecordedOn <= today)
+            .GroupBy(p => p.RecordedOn.Date)
+            .Select(g => new { Day = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var checkInsCurrentMonth = FillDailySeries(monthStart, today, checkInMonthGrouped.ToDictionary(x => x.Day, x => x.Count));
+
+        return Ok(new DashboardDto(studentCount, activeSubs, paymentsDue, monthRevenue, expiringSoon, sessionsPerDay, checkInsPerDay, checkInsCurrentMonth));
+    }
+
+    static List<DailyCountDto> FillDailySeries(DateTime start, DateTime end, Dictionary<DateTime, int> counts)
+    {
+        var rows = new List<DailyCountDto>();
+        for (var d = start; d <= end; d = d.AddDays(1))
+            rows.Add(new DailyCountDto(d.ToString("yyyy-MM-dd"), counts.GetValueOrDefault(d)));
+        return rows;
     }
 
     /// <summary>Month-by-month active students (distinct), active subscriptions, and payment revenue for the tenant.</summary>

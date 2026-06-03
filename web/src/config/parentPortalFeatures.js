@@ -1,8 +1,9 @@
-import { FiActivity, FiCalendar, FiClipboard, FiHome } from 'react-icons/fi'
+import { FiActivity, FiCalendar, FiClipboard, FiCoffee, FiHome } from 'react-icons/fi'
 import ParentPortalHome from '../components/parentPortal/ParentPortalHome'
 import ParentPortalSchedule from '../components/parentPortal/ParentPortalSchedule'
 import ParentPortalProgress from '../components/parentPortal/ParentPortalProgress'
 import ParentPortalCheckIns from '../components/parentPortal/ParentPortalCheckIns'
+import ParentPortalDiet from '../components/parentPortal/ParentPortalDiet'
 
 /**
  * Client portal feature registry — add new entries here to expose more tabs.
@@ -36,6 +37,13 @@ export const PARENT_PORTAL_FEATURES = [
     shortLabel: 'Classes',
     icon: FiCalendar,
     component: ParentPortalSchedule,
+  },
+  {
+    id: 'diet',
+    label: 'Diet',
+    shortLabel: 'Diet',
+    icon: FiCoffee,
+    component: ParentPortalDiet,
   },
   // Future examples (wire API + panel, then set enabled):
   // { id: 'payments', label: 'Payments', icon: FiCreditCard, component: ParentPortalPayments, enabled: () => false },

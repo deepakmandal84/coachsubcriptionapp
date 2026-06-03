@@ -1,4 +1,4 @@
-import { isImperial } from './progressUnits'
+import { isImperial } from './progressUnits.js'
 
 const LB_PER_KG = 2.2046226218
 const CM_PER_IN = 2.54

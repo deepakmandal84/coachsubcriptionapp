@@ -54,6 +54,7 @@ export default function ParentPortalProgress() {
     openCheckIn,
     closeCheckIn,
     reload,
+    openProfileSection,
   } = useParentProgress()
 
   function setView(next) {
@@ -102,9 +103,12 @@ export default function ParentPortalProgress() {
         token={token}
         unit={unit}
         profile={profile}
-        onSaved={() => {
-          toast.success('Check-in saved')
-          reload()
+        onSaved={reload}
+        onEditProfile={() => {
+          openProfileSection()
+          setTimeout(() => {
+            document.getElementById('parent-body-profile')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }, 50)
         }}
       />
     </div>

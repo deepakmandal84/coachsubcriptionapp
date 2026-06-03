@@ -10,6 +10,7 @@ export function ParentProgressProvider({ token, children }) {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [checkInOpen, setCheckInOpen] = useState(false)
+  const [profileFocusTick, setProfileFocusTick] = useState(0)
 
   const load = useCallback(() => {
     if (!token) return
@@ -46,8 +47,10 @@ export function ParentProgressProvider({ token, children }) {
       checkInOpen,
       openCheckIn: () => setCheckInOpen(true),
       closeCheckIn: () => setCheckInOpen(false),
+      profileFocusTick,
+      openProfileSection: () => setProfileFocusTick((n) => n + 1),
     }),
-    [token, summary, profile, unit, entries, stats, loading, err, load, checkInOpen]
+    [token, summary, profile, unit, entries, stats, loading, err, load, checkInOpen, profileFocusTick]
   )
 
   return <ParentProgressContext.Provider value={value}>{children}</ParentProgressContext.Provider>

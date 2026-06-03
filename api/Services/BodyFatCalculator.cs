@@ -32,10 +32,16 @@ public static class BodyFatCalculator
     /// <summary>Preview without persisting manual override.</summary>
     public static decimal? Preview(Student student, BodyMeasurementsDto? measurementsCm, decimal? weightKg)
     {
-        var navy = TryNavy(student.Gender, student.HeightCm, measurementsCm);
+        var navy = PreviewNavy(student, measurementsCm);
         if (navy.HasValue) return navy;
-        return TryDeurenberg(student.Gender, student.HeightCm, weightKg, student.DateOfBirth);
+        return PreviewBmi(student, weightKg);
     }
+
+    public static decimal? PreviewNavy(Student student, BodyMeasurementsDto? measurementsCm) =>
+        TryNavy(student.Gender, student.HeightCm, measurementsCm);
+
+    public static decimal? PreviewBmi(Student student, decimal? weightKg) =>
+        TryDeurenberg(student.Gender, student.HeightCm, weightKg, student.DateOfBirth);
 
     static decimal? TryNavy(StudentGender gender, decimal? heightCm, BodyMeasurementsDto? m)
     {

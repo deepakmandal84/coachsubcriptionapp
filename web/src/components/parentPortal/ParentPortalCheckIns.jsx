@@ -3,12 +3,12 @@ import { useParentProgress } from '../../context/ParentProgressContext'
 import { useParentPortal } from '../../context/ParentPortalContext'
 import CheckInFormModal from './CheckInFormModal'
 import Button from '../ui/Button'
+import BodyCompositionResults from '../BodyCompositionResults'
 import { FiPlus } from 'react-icons/fi'
-import { formatLength, formatWeight } from '../../utils/progressUnits'
+import { formatLength, formatWeight, measurementsFromDto } from '../../utils/progressUnits'
 import { formatCheckInDate, weekNumberForCheckIn } from '../../utils/progressStats'
 import { bodyFatMethodLabel } from '../../utils/bodyFatCalc'
-import { useToast } from '../../context/ToastContext'
-
+import { computeBodyCompositionSummary } from '../../utils/bodyCompositionResults'
 const MEASURE_ROWS = [
   [
     { key: 'waist', label: 'Waist' },
@@ -22,8 +22,23 @@ const MEASURE_ROWS = [
   ],
 ]
 
-function CheckInCard({ entry, week, unit, primary }) {
+function CheckInCard({ entry, week, unit, primary, profile }) {
   const m = entry.measurements || {}
+
+  const compositionSummary = useMemo(
+    () =>
+      computeBodyCompositionSummary({
+        gender: profile?.gender,
+        height: profile?.height != null ? String(profile.height) : '',
+        dateOfBirth: profile?.dateOfBirth,
+        unit,
+        weight: entry.weight,
+        measurements: measurementsFromDto(entry.measurements),
+        storedBodyFatPercent: entry.bodyFatPercent,
+        storedBodyFatMethod: entry.bodyFatMethod,
+      }),
+    [entry, profile, unit]
+  )
 
   function cellValue(key, isBf, isWeight) {
     if (isWeight) return formatWeight(entry.weight, unit)
@@ -71,14 +86,30 @@ function CheckInCard({ entry, week, unit, primary }) {
           <p className="text-xs text-slate-600 px-3 py-2 bg-slate-50 border-t border-slate-100">{entry.notes}</p>
         )}
       </div>
+
+      {compositionSummary.ready && (
+        <div className="mt-3">
+          <BodyCompositionResults summary={compositionSummary} compact />
+        </div>
+      )}
     </article>
   )
 }
 
 export default function ParentPortalCheckIns() {
   const { primary } = useParentPortal()
-  const toast = useToast()
-  const { token, entries, unit, profile, loading, openCheckIn, checkInOpen, closeCheckIn, reload } = useParentProgress()
+  const {
+    token,
+    entries,
+    unit,
+    profile,
+    loading,
+    openCheckIn,
+    checkInOpen,
+    closeCheckIn,
+    reload,
+    openProfileSection,
+  } = useParentProgress()
 
   const { sorted, firstDate } = useMemo(() => {
     const asc = [...entries].sort((a, b) => new Date(a.recordedOn) - new Date(b.recordedOn))
@@ -119,6 +150,7 @@ export default function ParentPortalCheckIns() {
               week={weekNumberForCheckIn(entry.recordedOn, firstDate)}
               unit={unit}
               primary={primary}
+              profile={profile}
             />
           ))}
         </div>
@@ -130,9 +162,12 @@ export default function ParentPortalCheckIns() {
         token={token}
         unit={unit}
         profile={profile}
-        onSaved={() => {
-          toast.success('Check-in saved')
-          reload()
+        onSaved={reload}
+        onEditProfile={() => {
+          openProfileSection()
+          setTimeout(() => {
+            document.getElementById('parent-body-profile')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }, 50)
         }}
       />
     </div>

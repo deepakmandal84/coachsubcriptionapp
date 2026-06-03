@@ -120,24 +120,8 @@ public class StudentProgressController : ControllerBase
             .ToListAsync(ct);
     }
 
-    static BodyFatPreviewDto BuildPreview(Student student, BodyFatPreviewRequest request)
-    {
-        var measurementsCm = ProgressMeasurementHelper.FromUserMeasurements(request.Measurements, student.MeasurementUnit);
-        var weightKg = ProgressMeasurementHelper.KgFromUserWeight(request.Weight, student.MeasurementUnit);
-        var calc = BodyFatCalculator.Preview(student, measurementsCm, weightKg);
-        var (_, method) = BodyFatCalculator.Resolve(null, student, measurementsCm, weightKg);
-
-        var missing = new List<string>();
-        if (student.Gender is StudentGender.Unspecified) missing.Add("Gender");
-        if (student.HeightCm == null) missing.Add("Height (in profile)");
-        if (student.DateOfBirth == null && student.Gender != StudentGender.Unspecified) missing.Add("Date of birth (for BMI fallback)");
-        if (measurementsCm?.Neck == null) missing.Add("Neck");
-        if (measurementsCm?.Waist == null) missing.Add("Waist");
-        if (student.Gender == StudentGender.Female && measurementsCm?.Hips == null) missing.Add("Hips");
-        if (weightKg == null && calc == null) missing.Add("Weight");
-
-        return new BodyFatPreviewDto(calc, method?.ToString(), missing);
-    }
+    static BodyFatPreviewDto BuildPreview(Student student, BodyFatPreviewRequest request) =>
+        BodyCompositionHelper.BuildPreview(student, request);
 
     static ProgressCheckIn MapNewEntry(Student student, CreateProgressCheckInRequest request, ProgressSource source, Guid? coachId)
     {
