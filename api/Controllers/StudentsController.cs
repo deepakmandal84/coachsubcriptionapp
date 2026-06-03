@@ -134,6 +134,15 @@ public class StudentsController : ControllerBase
     static MeasurementUnit ParseMeasurementUnit(string? value) =>
         Enum.TryParse<MeasurementUnit>(value, true, out var u) ? u : MeasurementUnit.Imperial;
 
+    /// <summary>Active students × months (from June) with attended session counts per cell.</summary>
+    [HttpGet("session-matrix")]
+    public async Task<ActionResult<StudentSessionMatrixDto>> SessionMatrix([FromQuery] string? search, CancellationToken ct)
+    {
+        if (_tenant.TenantId == null) return Forbid();
+        var matrix = await StudentSessionMatrixService.BuildAsync(_db, _tenant.TenantId.Value, search, ct);
+        return Ok(matrix);
+    }
+
     [HttpPost("class-usage")]
     public async Task<ActionResult<BatchClassUsageResponse>> BatchClassUsage([FromBody] BatchClassUsageRequest request, CancellationToken ct)
     {

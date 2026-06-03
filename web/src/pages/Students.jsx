@@ -4,7 +4,7 @@ import { studentsApi } from '../api'
 import { useAuth } from '../AuthContext'
 import { useAcademyPermissions } from '../hooks/useAcademyPermissions'
 import { useAppPaths } from '../hooks/useAppPaths'
-import { FiActivity, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUser, FiUserMinus } from 'react-icons/fi'
+import { FiActivity, FiCalendar, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUser, FiUserMinus } from 'react-icons/fi'
 import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
@@ -20,10 +20,12 @@ import { TableSkeleton } from '../components/ui/Skeleton'
 import { useToast } from '../context/ToastContext'
 import { formatError } from '../utils/formatError'
 import CopyWeightLogLink from '../components/students/CopyWeightLogLink'
+import StudentSessionMatrix from '../components/students/StudentSessionMatrix'
 
 const ROSTER_TABS = [
   { id: 'active', label: 'Active roster', icon: FiUser },
   { id: 'deactivated', label: 'Deactivated', icon: FiUserMinus },
+  { id: 'sessions', label: 'Sessions by month', icon: FiCalendar },
 ]
 
 export default function Students() {
@@ -32,6 +34,7 @@ export default function Students() {
   const { canManageStudents } = useAcademyPermissions()
   const toast = useToast()
   const [list, setList] = useState([])
+  const [sessionMatrix, setSessionMatrix] = useState(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [roster, setRoster] = useState('active')
@@ -56,6 +59,23 @@ export default function Students() {
   const loadVersionRef = useRef(0)
 
   const isDeactivatedView = roster === 'deactivated'
+  const isSessionsView = roster === 'sessions'
+
+  function loadMatrix() {
+    const version = ++loadVersionRef.current
+    setLoading(true)
+    studentsApi
+      .sessionMatrix({ search: search || undefined })
+      .then((data) => {
+        if (version === loadVersionRef.current) setSessionMatrix(data)
+      })
+      .catch((e) => {
+        if (version === loadVersionRef.current) setErr(formatError(e))
+      })
+      .finally(() => {
+        if (version === loadVersionRef.current) setLoading(false)
+      })
+  }
 
   function load() {
     const version = ++loadVersionRef.current
@@ -74,7 +94,8 @@ export default function Students() {
   }
 
   useEffect(() => {
-    load()
+    if (isSessionsView) loadMatrix()
+    else load()
   }, [search, roster])
 
   function openCreate() {
@@ -241,12 +262,14 @@ export default function Students() {
         icon={FiUser}
         title="Students"
         description={
-          isDeactivatedView
-            ? 'Former clients — profile kept so you can bring them back on the roster.'
-            : 'Active roster — subscriptions, classes, and progress for current clients.'
+          isSessionsView
+            ? 'Sessions attended per month for active students — columns from June through this month.'
+            : isDeactivatedView
+              ? 'Former clients — profile kept so you can bring them back on the roster.'
+              : 'Active roster — subscriptions, classes, and progress for current clients.'
         }
         action={
-          canManageStudents && !isDeactivatedView ? (
+          canManageStudents && !isDeactivatedView && !isSessionsView ? (
             <Button onClick={openCreate}>
               <FiPlus />
               Add student
@@ -284,7 +307,9 @@ export default function Students() {
         </div>
       </div>
 
-      {loading ? (
+      {isSessionsView ? (
+        <StudentSessionMatrix data={sessionMatrix} loading={loading} />
+      ) : loading ? (
         <TableSkeleton rows={6} cols={5} />
       ) : list.length === 0 ? (
         <Card>

@@ -81,6 +81,7 @@ export const studentsApi = {
   reactivate: (id) => api(`/students/${id}/reactivate`, { method: 'POST' }),
   batchClassUsage: (studentIds) =>
     api('/students/class-usage', { method: 'POST', body: JSON.stringify({ studentIds }) }),
+  sessionMatrix: (params) => api(`/students/session-matrix${toQueryString(params)}`),
   setMeasurementUnit: (id, measurementUnit) =>
     api(`/students/${id}/measurement-unit`, {
       method: 'PUT',
