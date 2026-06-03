@@ -6,6 +6,7 @@ using CoachSubscriptionApi.Data;
 using CoachSubscriptionApi.DTOs;
 using CoachSubscriptionApi.Entities;
 using CoachSubscriptionApi.Helpers;
+using CoachSubscriptionApi.Services;
 
 namespace CoachSubscriptionApi.Controllers;
 
@@ -25,7 +26,9 @@ public class ScheduleController : ControllerBase
         if (coach == null || string.IsNullOrEmpty(coach.ScheduleShareToken))
             return NotFound("Invalid schedule link.");
 
-        var q = _db.Sessions.AsNoTracking().Where(s => s.TenantId == coach.Id);
+        var q = SessionPrivateClientHelper.ApplyClientVisibilityFilter(
+            _db.Sessions.AsNoTracking().Where(s => s.TenantId == coach.Id),
+            viewerStudentId: null);
         if (from.HasValue)
         {
             var fromUtc = SessionDateHelper.ToUtcDateOnly(from.Value);
@@ -121,6 +124,8 @@ public class ScheduleController : ControllerBase
         var student = matches[0];
         var session = await _db.Sessions.FirstOrDefaultAsync(s => s.Id == sessionId && s.TenantId == coach.Id, ct);
         if (session == null) return NotFound("Class not found.");
+        if (!SessionPrivateClientHelper.CanClientSelfBook(session))
+            return BadRequest("Personal training sessions are scheduled by your coach.");
         if (session.Date < DateTime.UtcNow.Date)
             return BadRequest("This class date has passed.");
 

@@ -57,7 +57,9 @@ public class ParentController : ControllerBase
         if (link == null) return NotFound("Invalid or expired link.");
 
         var studentId = link.StudentId;
-        var q = _db.Sessions.AsNoTracking().Where(s => s.TenantId == link.TenantId);
+        var q = SessionPrivateClientHelper.ApplyClientVisibilityFilter(
+            _db.Sessions.AsNoTracking().Where(s => s.TenantId == link.TenantId),
+            studentId);
         if (from.HasValue)
         {
             var fromUtc = DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc);
@@ -125,6 +127,8 @@ public class ParentController : ControllerBase
 
         var session = await _db.Sessions.FirstOrDefaultAsync(s => s.Id == sessionId && s.TenantId == link.TenantId, ct);
         if (session == null) return NotFound("Class not found.");
+        if (!SessionPrivateClientHelper.CanClientSelfBook(session))
+            return BadRequest("Personal training sessions are scheduled by your coach and cannot be booked here.");
         if (session.Date < DateTime.UtcNow.Date)
             return BadRequest("This class date has passed.");
 

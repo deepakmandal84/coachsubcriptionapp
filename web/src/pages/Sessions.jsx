@@ -1,6 +1,12 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { sessionsApi, coachApi } from '../api'
+import { sessionsApi, coachApi, studentsApi } from '../api'
+import PrivateSessionClientField from '../components/sessions/PrivateSessionClientField'
+import { applyClientToPrivateForm, isPersonalTrainingType, personalTrainingTitle } from '../utils/privateSessionForm'
+
+function sessionTypeLabel(type) {
+  return type === 'Private' ? 'Personal Training' : type
+}
 import { useAuth } from '../AuthContext'
 import { useAcademyPermissions } from '../hooks/useAcademyPermissions'
 import { useAppPaths } from '../hooks/useAppPaths'
@@ -21,6 +27,7 @@ export default function Sessions() {
   const staffFilterDefaultDone = useRef(false)
   const [list, setList] = useState([])
   const [team, setTeam] = useState([])
+  const [students, setStudents] = useState([])
   const [err, setErr] = useState('')
   const [activeTab, setActiveTab] = useState('upcoming')
   const [modal, setModal] = useState(null)
@@ -33,6 +40,7 @@ export default function Sessions() {
     title: '',
     location: '',
     coachIds: [],
+    studentId: '',
   })
 
   function load() {
@@ -66,6 +74,11 @@ export default function Sessions() {
     coachApi.team().then(setTeam).catch(() => setTeam([]))
   }, [canManageSessions])
 
+  useEffect(() => {
+    if (!modal) return
+    studentsApi.list({ roster: 'active' }).then(setStudents).catch(() => setStudents([]))
+  }, [modal])
+
   function formatRowTime(s) {
     return formatSessionTime(s)
   }
@@ -79,14 +92,25 @@ export default function Sessions() {
       title: '',
       location: '',
       coachIds: ownerId ? [ownerId] : [],
+      studentId: '',
     })
     setEditing(null)
     setModal('create')
   }
 
-  function openEdit(s) {
+  async function openEdit(s) {
     const time = formatSessionTime(s)
     const ids = (s.assignedCoachIds || []).map(String)
+    let studentId = ''
+    if (s.type === 'Private') {
+      try {
+        const detail = await sessionsApi.get(s.id)
+        const booked = detail.bookings?.[0]
+        if (booked?.studentId) studentId = String(booked.studentId)
+      } catch {
+        /* keep empty — coach can pick client */
+      }
+    }
     setForm({
       date: sessionDateForInput(s.date),
       startTime: time,
@@ -94,9 +118,26 @@ export default function Sessions() {
       title: s.title,
       location: s.location ?? '',
       coachIds: ids.length ? ids : (coach?.id ? [String(coach.id)] : []),
+      studentId,
     })
     setEditing(s)
     setModal('edit')
+  }
+
+  function handleTypeChange(type) {
+    setForm((f) => {
+      const next = { ...f, type }
+      if (!isPersonalTrainingType(type)) {
+        next.studentId = ''
+      } else if (next.studentId) {
+        return applyClientToPrivateForm(next, next.studentId, students)
+      }
+      return next
+    })
+  }
+
+  function handleClientChange(studentId) {
+    setForm((f) => applyClientToPrivateForm(f, studentId, students))
   }
 
   function toggleCoachId(id) {
@@ -115,14 +156,19 @@ export default function Sessions() {
       setErr('Select at least one coach for this session.')
       return
     }
+    if (isPersonalTrainingType(form.type) && !form.studentId) {
+      setErr('Select a client for personal training.')
+      return
+    }
     try {
       await sessionsApi.create({
         date: form.date,
         startTime: form.startTime,
         type: form.type,
-        title: form.title,
+        title: isPersonalTrainingType(form.type) ? form.title || personalTrainingTitle('') : form.title,
         location: form.location || undefined,
         coachIds: canManageSessions ? form.coachIds : undefined,
+        studentId: isPersonalTrainingType(form.type) ? form.studentId : undefined,
       })
       setModal(null)
       setErr('')
@@ -137,6 +183,10 @@ export default function Sessions() {
       setErr('Select at least one coach for this session.')
       return
     }
+    if (isPersonalTrainingType(form.type) && !form.studentId) {
+      setErr('Select a client for personal training.')
+      return
+    }
     try {
       await sessionsApi.update(editing.id, {
         date: form.date,
@@ -145,6 +195,7 @@ export default function Sessions() {
         title: form.title,
         location: form.location || undefined,
         coachIds: canManageSessions ? form.coachIds : undefined,
+        studentId: isPersonalTrainingType(form.type) ? form.studentId : undefined,
       })
       setModal(null)
       setErr('')
@@ -255,7 +306,7 @@ export default function Sessions() {
                 <tr key={s.id} className="border-b last:border-0">
                   <td className="p-3">{formatSessionDate(s.date)}</td>
                   <td className="p-3">{formatRowTime(s)}</td>
-                  <td className="p-3">{s.type}</td>
+                  <td className="p-3">{sessionTypeLabel(s.type)}</td>
                   <td className="p-3">{s.title}</td>
                   <td className="p-3 text-sm text-gray-700 max-w-[10rem]">{coachNames(s)}</td>
                   <td className="p-3">{s.location ?? '–'}</td>
@@ -297,7 +348,7 @@ export default function Sessions() {
               <div key={s.id} className="bg-white rounded-2xl border p-4 shadow-sm border-brand-subtle">
                 <div className="font-semibold">{s.title}</div>
                 <div className="text-sm text-gray-600 mt-1">
-                  {formatSessionDate(s.date)} at {time} · {s.type}
+                  {formatSessionDate(s.date)} at {time} · {sessionTypeLabel(s.type)}
                   {s.location ? ` · ${s.location}` : ''}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">Coaches: {coachNames(s)}</div>
@@ -364,14 +415,27 @@ export default function Sessions() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Type</label>
-                <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="w-full border rounded px-3 py-2">
+                <select value={form.type} onChange={e => handleTypeChange(e.target.value)} className="w-full border rounded px-3 py-2">
                   <option value="Group">Group</option>
-                  <option value="Private">Private</option>
+                  <option value="Private">Personal Training</option>
                 </select>
               </div>
+              <PrivateSessionClientField
+                form={form}
+                students={students}
+                onStudentChange={handleClientChange}
+              />
               <div>
-                <label className="block text-sm font-medium text-gray-700">Title *</label>
-                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required className="w-full border rounded px-3 py-2" />
+                <label className="block text-sm font-medium text-gray-700">
+                  Title{isPersonalTrainingType(form.type) ? '' : ' *'}
+                </label>
+                <input
+                  value={form.title}
+                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  required={!isPersonalTrainingType(form.type)}
+                  placeholder={isPersonalTrainingType(form.type) ? 'Auto-filled from client name' : ''}
+                  className="w-full border rounded px-3 py-2"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Location</label>

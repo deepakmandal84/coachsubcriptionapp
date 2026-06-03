@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 import Select from '../ui/Select'
 import Input from '../ui/Input'
 import SessionPickerCalendar from './SessionPickerCalendar'
+import PrivateSessionClientField from './PrivateSessionClientField'
 import { toLocalDateKey } from '../../utils/dateKey'
-import { sessionsApi } from '../../api'
+import { sessionsApi, studentsApi } from '../../api'
+import { applyClientToPrivateForm, isPersonalTrainingType } from '../../utils/privateSessionForm'
 
 const emptyForm = (coachIds) => ({
   startTime: '09:00',
@@ -13,6 +15,7 @@ const emptyForm = (coachIds) => ({
   title: '',
   location: '',
   coachIds,
+  studentId: '',
 })
 
 export default function BulkSessionsModal({ open, onClose, team, canManageSessions, coachId, existingSessions, onCreated }) {
@@ -25,6 +28,12 @@ export default function BulkSessionsModal({ open, onClose, team, canManageSessio
   const [form, setForm] = useState(() => emptyForm(ownerId ? [ownerId] : []))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [students, setStudents] = useState([])
+
+  useEffect(() => {
+    if (!open) return
+    studentsApi.list({ roster: 'active' }).then(setStudents).catch(() => setStudents([]))
+  }, [open])
 
   const existingDateKeys = useMemo(() => {
     const keys = new Set()
@@ -75,7 +84,11 @@ export default function BulkSessionsModal({ open, onClose, team, canManageSessio
       setErr('Select at least one day on the calendar.')
       return
     }
-    if (!form.title.trim()) {
+    if (isPersonalTrainingType(form.type) && !form.studentId) {
+      setErr('Select a client for personal training.')
+      return
+    }
+    if (!isPersonalTrainingType(form.type) && !form.title.trim()) {
       setErr('Title is required.')
       return
     }
@@ -97,6 +110,7 @@ export default function BulkSessionsModal({ open, onClose, team, canManageSessio
         title: form.title.trim(),
         location: form.location.trim() || undefined,
         coachIds: canManageSessions ? form.coachIds : undefined,
+        studentId: isPersonalTrainingType(form.type) ? form.studentId : undefined,
       })
       onCreated?.(result.createdCount)
       setSelectedKeys(new Set())
@@ -158,12 +172,6 @@ export default function BulkSessionsModal({ open, onClose, team, canManageSessio
           </div>
 
           <div className="lg:w-72 space-y-3 shrink-0">
-            <Input
-              label="Title *"
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              required
-            />
             <div className="grid grid-cols-2 gap-2">
               <Input
                 label="Time *"
@@ -175,12 +183,32 @@ export default function BulkSessionsModal({ open, onClose, team, canManageSessio
               <Select
                 label="Type"
                 value={form.type}
-                onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+                onChange={(e) => {
+                  const type = e.target.value
+                  setForm((f) => {
+                    const next = { ...f, type }
+                    if (!isPersonalTrainingType(type)) return { ...next, studentId: '' }
+                    if (next.studentId) return applyClientToPrivateForm(next, next.studentId, students)
+                    return next
+                  })
+                }}
               >
                 <option value="Group">Group</option>
-                <option value="Private">Private</option>
+                <option value="Private">Personal Training</option>
               </Select>
             </div>
+            <PrivateSessionClientField
+              form={form}
+              students={students}
+              onStudentChange={(studentId) => setForm((f) => applyClientToPrivateForm(f, studentId, students))}
+            />
+            <Input
+              label={isPersonalTrainingType(form.type) ? 'Title' : 'Title *'}
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              required={!isPersonalTrainingType(form.type)}
+              placeholder={isPersonalTrainingType(form.type) ? 'Auto-filled from client' : ''}
+            />
             <Input
               label="Location"
               value={form.location}

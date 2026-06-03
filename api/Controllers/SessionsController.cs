@@ -187,6 +187,22 @@ public class SessionsController : ControllerBase
         return n.Length <= 4 ? n : n[^4..];
     }
 
+    private async Task<List<AssignedCoachDto>> LoadAssignedCoachesAsync(Guid sessionId, CancellationToken ct) =>
+        await _db.SessionCoaches.AsNoTracking()
+            .Where(sc => sc.SessionId == sessionId)
+            .OrderBy(sc => sc.Coach.Name)
+            .Select(sc => new AssignedCoachDto(sc.CoachId, sc.Coach.Name))
+            .ToListAsync(ct);
+
+    private async Task<List<SessionBookingDto>> LoadSessionBookingsAsync(Guid sessionId, CancellationToken ct)
+    {
+        var rows = await _db.SessionBookings.AsNoTracking()
+            .Where(b => b.SessionId == sessionId)
+            .Select(b => new { b.Id, b.StudentId, Name = b.Student.Name, b.Student.Phone })
+            .ToListAsync(ct);
+        return rows.Select(b => new SessionBookingDto(b.Id, b.StudentId, b.Name, PhoneLast4(b.Phone))).ToList();
+    }
+
     private static bool IsSchemaMismatch(PostgresException ex)
         => ex.SqlState is "42P01" or "42703";
 
@@ -210,29 +226,47 @@ public class SessionsController : ControllerBase
             return BadRequest("Invalid date. Use YYYY-MM-DD.");
         }
 
+        var tenantId = _tenant.TenantId.Value;
+        var title = request.Title;
+        Guid? privateStudentId = null;
+        if (SessionPrivateClientHelper.IsPrivate(sessionType))
+        {
+            if (!request.StudentId.HasValue)
+                return BadRequest("Select a client for personal training sessions.");
+            var student = await SessionPrivateClientHelper.GetActiveStudentAsync(_db, tenantId, request.StudentId.Value, ct);
+            if (student == null) return BadRequest("Client not found or is not on the active roster.");
+            privateStudentId = student.Id;
+            title = SessionPrivateClientHelper.ResolveTitle(request.Title, student.Name);
+        }
+        else if (string.IsNullOrWhiteSpace(title))
+        {
+            return BadRequest("Title is required.");
+        }
+
         var session = new Session
         {
             Id = Guid.NewGuid(),
-            TenantId = _tenant.TenantId.Value,
+            TenantId = tenantId,
             Date = sessionDate,
             StartTime = startTime,
             Type = sessionType,
-            Title = request.Title,
+            Title = title.Trim(),
             Location = request.Location,
             CreatedAt = DateTime.UtcNow
         };
         _db.Sessions.Add(session);
         await _db.SaveChangesAsync(ct);
         await ReplaceSessionCoachesAsync(session.Id, coachIds, ct);
+        if (privateStudentId.HasValue)
+            await SessionPrivateClientHelper.EnsureBookingAsync(_db, tenantId, session.Id, privateStudentId.Value, ct);
         await _db.SaveChangesAsync(ct);
-        var assigned = await _db.SessionCoaches.AsNoTracking()
-            .Where(sc => sc.SessionId == session.Id)
-            .Select(sc => new AssignedCoachDto(sc.CoachId, sc.Coach.Name))
-            .OrderBy(a => a.Name)
-            .ToListAsync(ct);
+        var assigned = await LoadAssignedCoachesAsync(session.Id, ct);
+        var bookings = privateStudentId.HasValue
+            ? await LoadSessionBookingsAsync(session.Id, ct)
+            : new List<SessionBookingDto>();
         var canMark = ClubStaffPermissions.IsClubOwner(_tenant) || ClubStaffPermissions.IsAdminActingAsTenant(_tenant) || coachIds.Contains(_tenant.UserId!.Value);
         return CreatedAtAction(nameof(Get), new { id = session.Id },
-            SessionDtoMapper.ToDetailDto(session, new List<SessionBookingDto>(), new List<AttendanceDto>(), assigned, canMark));
+            SessionDtoMapper.ToDetailDto(session, bookings, new List<AttendanceDto>(), assigned, canMark));
     }
 
     [HttpPost("bulk")]
@@ -243,11 +277,13 @@ public class SessionsController : ControllerBase
             return BadRequest("Select at least one date.");
         if (request.Dates.Count > 62)
             return BadRequest("At most 62 dates per bulk create.");
-        if (string.IsNullOrWhiteSpace(request.Title))
-            return BadRequest("Title is required.");
         if (!TimeSpan.TryParse(request.StartTime, out var startTime)) startTime = TimeSpan.Zero;
         if (!Enum.TryParse<SessionType>(request.Type, true, out var sessionType))
             return BadRequest("Invalid session type. Use Group or Private.");
+        if (sessionType == SessionType.Group && string.IsNullOrWhiteSpace(request.Title))
+            return BadRequest("Title is required.");
+        if (SessionPrivateClientHelper.IsPrivate(sessionType) && !request.StudentId.HasValue)
+            return BadRequest("Select a client for personal training sessions.");
 
         var coachIds = NormalizeCoachIds(request.CoachIds, _tenant.TenantId!.Value);
         if (!await AreCoachIdsInClubAsync(_tenant.TenantId!.Value, coachIds, ct))
@@ -272,6 +308,16 @@ public class SessionsController : ControllerBase
             return BadRequest("No valid dates provided.");
 
         var tenantId = _tenant.TenantId!.Value;
+        var bulkTitle = request.Title?.Trim() ?? "";
+        Guid? bulkStudentId = null;
+        if (SessionPrivateClientHelper.IsPrivate(sessionType))
+        {
+            var student = await SessionPrivateClientHelper.GetActiveStudentAsync(_db, tenantId, request.StudentId!.Value, ct);
+            if (student == null) return BadRequest("Client not found or is not on the active roster.");
+            bulkStudentId = student.Id;
+            bulkTitle = SessionPrivateClientHelper.ResolveTitle(request.Title, student.Name);
+        }
+
         var sessions = distinctDates.Select(d => new Session
         {
             Id = Guid.NewGuid(),
@@ -279,7 +325,7 @@ public class SessionsController : ControllerBase
             Date = d,
             StartTime = startTime,
             Type = sessionType,
-            Title = request.Title.Trim(),
+            Title = bulkTitle,
             Location = request.Location,
             CreatedAt = DateTime.UtcNow,
         }).ToList();
@@ -295,6 +341,11 @@ public class SessionsController : ControllerBase
                 links.Add(new SessionCoach { SessionId = session.Id, CoachId = cid });
         }
         _db.SessionCoaches.AddRange(links);
+        if (bulkStudentId.HasValue)
+        {
+            foreach (var session in sessions)
+                await SessionPrivateClientHelper.EnsureBookingAsync(_db, tenantId, session.Id, bulkStudentId.Value, ct);
+        }
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
@@ -324,7 +375,27 @@ public class SessionsController : ControllerBase
         }
         x.StartTime = startTime;
         x.Type = sessionType;
-        x.Title = request.Title;
+        var tenantId = _tenant.TenantId!.Value;
+        if (SessionPrivateClientHelper.IsPrivate(sessionType))
+        {
+            if (!request.StudentId.HasValue)
+                return BadRequest("Select a client for personal training sessions.");
+            try
+            {
+                x.Title = await SessionPrivateClientHelper.AssignPrivateClientAsync(
+                    _db, tenantId, x.Id, request.StudentId.Value, request.Title, ct);
+            }
+            catch (InvalidOperationException)
+            {
+                return BadRequest("Client not found or is not on the active roster.");
+            }
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(request.Title))
+                return BadRequest("Title is required.");
+            x.Title = request.Title.Trim();
+        }
         x.Location = request.Location;
         x.UpdatedAt = DateTime.UtcNow;
         if (request.CoachIds != null)
@@ -335,13 +406,9 @@ public class SessionsController : ControllerBase
             await ReplaceSessionCoachesAsync(x.Id, coachIds, ct);
         }
         await _db.SaveChangesAsync(ct);
-        var bookings = x.Bookings.Select(b => new SessionBookingDto(b.Id, b.StudentId, b.Student.Name, PhoneLast4(b.Student.Phone))).ToList();
+        var bookings = await LoadSessionBookingsAsync(x.Id, ct);
         var attendances = x.Attendances.Select(a => new AttendanceDto(a.Id, a.StudentId, a.Student.Name, a.Present, a.SessionsConsumed)).ToList();
-        var assigned = await _db.SessionCoaches.AsNoTracking()
-            .Where(sc => sc.SessionId == x.Id)
-            .Select(sc => new AssignedCoachDto(sc.CoachId, sc.Coach.Name))
-            .OrderBy(a => a.Name)
-            .ToListAsync(ct);
+        var assigned = await LoadAssignedCoachesAsync(x.Id, ct);
         var canMark = await CanTakeAttendanceForSessionAsync(x, ct);
         return Ok(SessionDtoMapper.ToDetailDto(x, bookings, attendances, assigned, canMark));
     }
