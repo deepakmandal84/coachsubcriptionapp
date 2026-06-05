@@ -4,6 +4,33 @@ import { sessionsApi, studentsApi } from '../api'
 import { useAppPaths } from '../hooks/useAppPaths'
 import { formatClassUsage } from '../utils/classUsage'
 import { formatSessionDate, formatSessionTime } from '../utils/sessionFormat'
+import SessionClientsMultiSelect from '../components/sessions/SessionClientsMultiSelect'
+import Button from '../components/ui/Button'
+
+function buildRosterItems(session, students) {
+  const existing = new Map(
+    (session.attendances || []).map((a) => [String(a.studentId), { present: a.present, sessionsConsumed: a.sessionsConsumed }]),
+  )
+  const booked = session.bookings || []
+  const idSet = new Set()
+  for (const b of booked) idSet.add(String(b.studentId))
+  for (const a of session.attendances || []) idSet.add(String(a.studentId))
+
+  const next = [...idSet].map((studentId) => {
+    const s = students.find((st) => String(st.id) === studentId)
+    const bk = booked.find((b) => String(b.studentId) === studentId)
+    const e = existing.get(studentId)
+    return {
+      studentId,
+      studentName: s?.name ?? bk?.studentName ?? 'Unknown',
+      signedUp: !!bk,
+      present: e?.present ?? false,
+      sessionsConsumed: e?.sessionsConsumed ?? 1,
+    }
+  })
+  next.sort((a, b) => Number(b.signedUp) - Number(a.signedUp) || a.studentName.localeCompare(b.studentName))
+  return next
+}
 
 export default function SessionAttendance() {
   const { id } = useParams()
@@ -15,6 +42,9 @@ export default function SessionAttendance() {
   const [saving, setSaving] = useState(false)
   const [items, setItems] = useState([])
   const [usageByStudent, setUsageByStudent] = useState({})
+  const [showAddOthers, setShowAddOthers] = useState(false)
+  const [addIds, setAddIds] = useState([])
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -22,42 +52,31 @@ export default function SessionAttendance() {
     sessionsApi
       .get(id)
       .then(setSession)
-      .catch(e => {
+      .catch((e) => {
         const msg = e instanceof Error ? e.message : ''
         if (msg.includes('403')) setErr('You do not have access to this session.')
         else setErr(msg || 'Failed to load session')
       })
-    studentsApi.list({ status: 'Active' }).then(setStudents).catch(() => {})
+    studentsApi.list({ roster: 'active' }).then(setStudents).catch(() => {})
   }, [id])
 
   useEffect(() => {
     if (!session) return
-    const existing = new Map((session.attendances || []).map(a => [a.studentId, { present: a.present, sessionsConsumed: a.sessionsConsumed }]))
-    const booked = session.bookings || []
-    const idSet = new Set(students.map(s => s.id))
-    for (const b of booked) idSet.add(b.studentId)
-    const next = [...idSet].map(studentId => {
-      const s = students.find(st => st.id === studentId)
-      const bk = booked.find(b => b.studentId === studentId)
-      const e = existing.get(studentId)
-      return {
-        studentId,
-        studentName: s?.name ?? bk?.studentName ?? 'Unknown',
-        signedUp: !!bk,
-        present: e?.present ?? false,
-        sessionsConsumed: e?.sessionsConsumed ?? 1,
-      }
-    })
-    next.sort((a, b) => Number(b.signedUp) - Number(a.signedUp) || a.studentName.localeCompare(b.studentName))
-    setItems(next)
+    setItems(buildRosterItems(session, students))
   }, [session, students])
 
   const rosterKey = useMemo(() => {
     if (!session) return ''
-    const ids = new Set(students.map(s => s.id))
-    for (const b of session.bookings || []) ids.add(b.studentId)
+    const ids = new Set()
+    for (const b of session.bookings || []) ids.add(String(b.studentId))
+    for (const a of session.attendances || []) ids.add(String(a.studentId))
     return [...ids].sort().join(',')
-  }, [session, students])
+  }, [session])
+
+  const rosterStudentIds = useMemo(
+    () => items.map((i) => String(i.studentId)),
+    [items],
+  )
 
   useEffect(() => {
     if (!id || !rosterKey) return
@@ -65,14 +84,16 @@ export default function SessionAttendance() {
     let cancelled = false
     studentsApi
       .batchClassUsage(rosterIds)
-      .then(r => {
+      .then((r) => {
         if (cancelled) return
         const m = {}
         for (const row of r.results || []) m[row.studentId] = row.summary
         setUsageByStudent(m)
       })
       .catch(() => {})
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [id, rosterKey])
 
   async function handleSave() {
@@ -81,7 +102,7 @@ export default function SessionAttendance() {
     try {
       const resp = await sessionsApi.setAttendance(
         id,
-        items.map(i => ({
+        items.map((i) => ({
           studentId: i.studentId,
           present: i.present,
           sessionsConsumed: i.present ? i.sessionsConsumed : 0,
@@ -101,8 +122,24 @@ export default function SessionAttendance() {
     }
   }
 
+  async function handleAddOthers() {
+    if (!id || !session?.canMarkAttendance || addIds.length === 0) return
+    setAdding(true)
+    setErr('')
+    try {
+      const updated = await sessionsApi.addBookings(id, addIds)
+      setSession(updated)
+      setAddIds([])
+      setShowAddOthers(false)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not add clients')
+    } finally {
+      setAdding(false)
+    }
+  }
+
   function setItem(studentId, patch) {
-    setItems(prev => prev.map(i => (i.studentId === studentId ? { ...i, ...patch } : i)))
+    setItems((prev) => prev.map((i) => (String(i.studentId) === String(studentId) ? { ...i, ...patch } : i)))
   }
 
   if (!session) {
@@ -120,6 +157,7 @@ export default function SessionAttendance() {
 
   const timeStr = formatSessionTime(session)
   const canEdit = session.canMarkAttendance === true
+  const typeLabel = session.type === 'Private' ? 'Personal Training' : session.type
 
   return (
     <div>
@@ -130,7 +168,7 @@ export default function SessionAttendance() {
           </button>
           <h1 className="text-2xl font-semibold">Attendance: {session.title}</h1>
           <p className="text-gray-500">
-            {formatSessionDate(session.date)} at {timeStr} · {session.type}
+            {formatSessionDate(session.date)} at {timeStr} · {typeLabel}
           </p>
         </div>
         <button
@@ -149,9 +187,9 @@ export default function SessionAttendance() {
       )}
       {(session.bookings || []).length > 0 && (
         <div className="mb-4 p-4 bg-brand-subtle border border-brand-subtle rounded-lg text-sm">
-          <div className="font-medium text-slate-900 mb-1">Signed up</div>
+          <div className="font-medium text-slate-900 mb-1">On the roster</div>
           <ul className="list-disc list-inside text-brand space-y-1">
-            {(session.bookings || []).map(b => (
+            {(session.bookings || []).map((b) => (
               <li key={b.id}>
                 {b.studentName}
                 {b.studentPhoneLast4 ? ` (···${b.studentPhoneLast4})` : ''}
@@ -160,7 +198,61 @@ export default function SessionAttendance() {
           </ul>
         </div>
       )}
+
+      {canEdit && (
+        <div className="mb-4">
+          {!showAddOthers ? (
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddOthers(true)
+                setAddIds([])
+                setErr('')
+              }}
+              className="text-sm font-medium text-brand hover:underline"
+            >
+              Did anyone else join? →
+            </button>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+              <p className="text-sm font-medium text-slate-900">Add clients to this session</p>
+              <SessionClientsMultiSelect
+                students={students}
+                selectedIds={addIds}
+                onChange={setAddIds}
+                excludeIds={rosterStudentIds}
+                hint="Select one or more clients. They will be added to the roster and can be marked present."
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" disabled={adding || addIds.length === 0} onClick={handleAddOthers}>
+                  {adding ? 'Adding…' : 'Add to session'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowAddOthers(false)
+                    setAddIds([])
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {err && <p className="text-red-600 mb-2">{err}</p>}
+
+      {items.length === 0 && (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600">
+          No one on the roster yet.
+          {canEdit && ' Use “Did anyone else join?” to add clients, or assign them when creating the session.'}
+        </div>
+      )}
+
       <div className="space-y-3">
         <div className="hidden md:block bg-white rounded-lg border overflow-hidden">
           <table className="w-full text-sm">
@@ -174,7 +266,7 @@ export default function SessionAttendance() {
               </tr>
             </thead>
             <tbody>
-              {items.map(i => (
+              {items.map((i) => (
                 <tr key={i.studentId} className="border-b last:border-0">
                   <td className="p-3">{i.studentName}</td>
                   <td className="p-3">{i.signedUp ? 'Yes' : '—'}</td>
@@ -183,7 +275,7 @@ export default function SessionAttendance() {
                       type="checkbox"
                       checked={i.present}
                       disabled={!canEdit}
-                      onChange={e => setItem(i.studentId, { present: e.target.checked })}
+                      onChange={(e) => setItem(i.studentId, { present: e.target.checked })}
                     />
                   </td>
                   <td className="p-3">
@@ -191,7 +283,7 @@ export default function SessionAttendance() {
                       type="number"
                       min="0"
                       value={i.sessionsConsumed}
-                      onChange={e => setItem(i.studentId, { sessionsConsumed: Number(e.target.value) })}
+                      onChange={(e) => setItem(i.studentId, { sessionsConsumed: Number(e.target.value) })}
                       className="w-16 border rounded px-2 py-1"
                       disabled={!canEdit || !i.present}
                     />
@@ -204,17 +296,20 @@ export default function SessionAttendance() {
         </div>
 
         <div className="md:hidden space-y-3">
-          {items.map(i => (
+          {items.map((i) => (
             <div key={i.studentId} className="bg-white rounded-2xl border p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-semibold">{i.studentName}</div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    Signed up: {i.signedUp ? 'Yes' : '—'}
-                  </div>
+                  <div className="text-sm text-gray-500 mt-1">Signed up: {i.signedUp ? 'Yes' : '—'}</div>
                 </div>
                 <label className="inline-flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={i.present} disabled={!canEdit} onChange={e => setItem(i.studentId, { present: e.target.checked })} />
+                  <input
+                    type="checkbox"
+                    checked={i.present}
+                    disabled={!canEdit}
+                    onChange={(e) => setItem(i.studentId, { present: e.target.checked })}
+                  />
                   Present
                 </label>
               </div>
@@ -224,14 +319,12 @@ export default function SessionAttendance() {
                   type="number"
                   min="0"
                   value={i.sessionsConsumed}
-                  onChange={e => setItem(i.studentId, { sessionsConsumed: Number(e.target.value) })}
+                  onChange={(e) => setItem(i.studentId, { sessionsConsumed: Number(e.target.value) })}
                   className="w-24 border rounded-lg px-3 py-2"
                   disabled={!canEdit || !i.present}
                 />
               </div>
-              <div className="text-sm text-gray-700 mt-2">
-                {formatClassUsage(usageByStudent[i.studentId]) || '—'}
-              </div>
+              <div className="text-sm text-gray-700 mt-2">{formatClassUsage(usageByStudent[i.studentId]) || '—'}</div>
             </div>
           ))}
         </div>

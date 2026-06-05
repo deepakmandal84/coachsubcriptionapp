@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { sessionsApi, coachApi, studentsApi } from '../api'
 import PrivateSessionClientField from '../components/sessions/PrivateSessionClientField'
+import SessionClientsMultiSelect from '../components/sessions/SessionClientsMultiSelect'
 import { applyClientToPrivateForm, isPersonalTrainingType, personalTrainingTitle } from '../utils/privateSessionForm'
 
 function sessionTypeLabel(type) {
@@ -41,6 +42,7 @@ export default function Sessions() {
     location: '',
     coachIds: [],
     studentId: '',
+    studentIds: [],
   })
 
   function load() {
@@ -93,6 +95,7 @@ export default function Sessions() {
       location: '',
       coachIds: ownerId ? [ownerId] : [],
       studentId: '',
+      studentIds: [],
     })
     setEditing(null)
     setModal('create')
@@ -102,14 +105,17 @@ export default function Sessions() {
     const time = formatSessionTime(s)
     const ids = (s.assignedCoachIds || []).map(String)
     let studentId = ''
-    if (s.type === 'Private') {
-      try {
-        const detail = await sessionsApi.get(s.id)
+    let studentIds = []
+    try {
+      const detail = await sessionsApi.get(s.id)
+      if (s.type === 'Private') {
         const booked = detail.bookings?.[0]
         if (booked?.studentId) studentId = String(booked.studentId)
-      } catch {
-        /* keep empty — coach can pick client */
+      } else {
+        studentIds = (detail.bookings || []).map((b) => String(b.studentId))
       }
+    } catch {
+      /* keep empty — coach can pick clients */
     }
     setForm({
       date: sessionDateForInput(s.date),
@@ -119,6 +125,7 @@ export default function Sessions() {
       location: s.location ?? '',
       coachIds: ids.length ? ids : (coach?.id ? [String(coach.id)] : []),
       studentId,
+      studentIds,
     })
     setEditing(s)
     setModal('edit')
@@ -129,8 +136,9 @@ export default function Sessions() {
       const next = { ...f, type }
       if (!isPersonalTrainingType(type)) {
         next.studentId = ''
-      } else if (next.studentId) {
-        return applyClientToPrivateForm(next, next.studentId, students)
+      } else {
+        next.studentIds = []
+        if (next.studentId) return applyClientToPrivateForm(next, next.studentId, students)
       }
       return next
     })
@@ -169,6 +177,7 @@ export default function Sessions() {
         location: form.location || undefined,
         coachIds: canManageSessions ? form.coachIds : undefined,
         studentId: isPersonalTrainingType(form.type) ? form.studentId : undefined,
+        studentIds: !isPersonalTrainingType(form.type) && form.studentIds?.length ? form.studentIds : undefined,
       })
       setModal(null)
       setErr('')
@@ -196,6 +205,7 @@ export default function Sessions() {
         location: form.location || undefined,
         coachIds: canManageSessions ? form.coachIds : undefined,
         studentId: isPersonalTrainingType(form.type) ? form.studentId : undefined,
+        studentIds: !isPersonalTrainingType(form.type) ? form.studentIds || [] : undefined,
       })
       setModal(null)
       setErr('')
@@ -425,6 +435,15 @@ export default function Sessions() {
                 students={students}
                 onStudentChange={handleClientChange}
               />
+              {!isPersonalTrainingType(form.type) && (
+                <SessionClientsMultiSelect
+                  label="Clients joining (optional)"
+                  hint="Leave empty for an open group class anyone can sign up for. Select clients to limit attendance and portal visibility to them only."
+                  students={students}
+                  selectedIds={form.studentIds}
+                  onChange={(studentIds) => setForm((f) => ({ ...f, studentIds }))}
+                />
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Title{isPersonalTrainingType(form.type) ? '' : ' *'}

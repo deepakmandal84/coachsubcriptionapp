@@ -229,6 +229,8 @@ public class SessionsController : ControllerBase
         var tenantId = _tenant.TenantId.Value;
         var title = request.Title;
         Guid? privateStudentId = null;
+        List<Guid> groupStudentIds = [];
+        var rosterOnly = false;
         if (SessionPrivateClientHelper.IsPrivate(sessionType))
         {
             if (!request.StudentId.HasValue)
@@ -238,9 +240,23 @@ public class SessionsController : ControllerBase
             privateStudentId = student.Id;
             title = SessionPrivateClientHelper.ResolveTitle(request.Title, student.Name);
         }
-        else if (string.IsNullOrWhiteSpace(title))
+        else
         {
-            return BadRequest("Title is required.");
+            if (string.IsNullOrWhiteSpace(title))
+                return BadRequest("Title is required.");
+            if (request.StudentIds is { Count: > 0 })
+            {
+                try
+                {
+                    groupStudentIds = await SessionRosterService.ValidateActiveStudentIdsAsync(
+                        _db, tenantId, request.StudentIds, ct);
+                    rosterOnly = true;
+                }
+                catch (InvalidOperationException)
+                {
+                    return BadRequest("One or more clients were not found on the active roster.");
+                }
+            }
         }
 
         var session = new Session
@@ -252,6 +268,7 @@ public class SessionsController : ControllerBase
             Type = sessionType,
             Title = title.Trim(),
             Location = request.Location,
+            RosterOnly = rosterOnly,
             CreatedAt = DateTime.UtcNow
         };
         _db.Sessions.Add(session);
@@ -259,11 +276,11 @@ public class SessionsController : ControllerBase
         await ReplaceSessionCoachesAsync(session.Id, coachIds, ct);
         if (privateStudentId.HasValue)
             await SessionPrivateClientHelper.EnsureBookingAsync(_db, tenantId, session.Id, privateStudentId.Value, ct);
+        else if (groupStudentIds.Count > 0)
+            await SessionRosterService.BookStudentsAsync(_db, tenantId, session.Id, groupStudentIds, ct);
         await _db.SaveChangesAsync(ct);
         var assigned = await LoadAssignedCoachesAsync(session.Id, ct);
-        var bookings = privateStudentId.HasValue
-            ? await LoadSessionBookingsAsync(session.Id, ct)
-            : new List<SessionBookingDto>();
+        var bookings = await LoadSessionBookingsAsync(session.Id, ct);
         var canMark = ClubStaffPermissions.IsClubOwner(_tenant) || ClubStaffPermissions.IsAdminActingAsTenant(_tenant) || coachIds.Contains(_tenant.UserId!.Value);
         return CreatedAtAction(nameof(Get), new { id = session.Id },
             SessionDtoMapper.ToDetailDto(session, bookings, new List<AttendanceDto>(), assigned, canMark));
@@ -310,12 +327,27 @@ public class SessionsController : ControllerBase
         var tenantId = _tenant.TenantId!.Value;
         var bulkTitle = request.Title?.Trim() ?? "";
         Guid? bulkStudentId = null;
+        List<Guid> bulkGroupStudentIds = [];
+        var bulkRosterOnly = false;
         if (SessionPrivateClientHelper.IsPrivate(sessionType))
         {
             var student = await SessionPrivateClientHelper.GetActiveStudentAsync(_db, tenantId, request.StudentId!.Value, ct);
             if (student == null) return BadRequest("Client not found or is not on the active roster.");
             bulkStudentId = student.Id;
             bulkTitle = SessionPrivateClientHelper.ResolveTitle(request.Title, student.Name);
+        }
+        else if (request.StudentIds is { Count: > 0 })
+        {
+            try
+            {
+                bulkGroupStudentIds = await SessionRosterService.ValidateActiveStudentIdsAsync(
+                    _db, tenantId, request.StudentIds, ct);
+                bulkRosterOnly = true;
+            }
+            catch (InvalidOperationException)
+            {
+                return BadRequest("One or more clients were not found on the active roster.");
+            }
         }
 
         var sessions = distinctDates.Select(d => new Session
@@ -327,6 +359,7 @@ public class SessionsController : ControllerBase
             Type = sessionType,
             Title = bulkTitle,
             Location = request.Location,
+            RosterOnly = bulkRosterOnly,
             CreatedAt = DateTime.UtcNow,
         }).ToList();
 
@@ -345,6 +378,11 @@ public class SessionsController : ControllerBase
         {
             foreach (var session in sessions)
                 await SessionPrivateClientHelper.EnsureBookingAsync(_db, tenantId, session.Id, bulkStudentId.Value, ct);
+        }
+        else if (bulkGroupStudentIds.Count > 0)
+        {
+            foreach (var session in sessions)
+                await SessionRosterService.BookStudentsAsync(_db, tenantId, session.Id, bulkGroupStudentIds, ct);
         }
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -378,6 +416,7 @@ public class SessionsController : ControllerBase
         var tenantId = _tenant.TenantId!.Value;
         if (SessionPrivateClientHelper.IsPrivate(sessionType))
         {
+            x.RosterOnly = false;
             if (!request.StudentId.HasValue)
                 return BadRequest("Select a client for personal training sessions.");
             try
@@ -395,6 +434,20 @@ public class SessionsController : ControllerBase
             if (string.IsNullOrWhiteSpace(request.Title))
                 return BadRequest("Title is required.");
             x.Title = request.Title.Trim();
+            if (request.StudentIds != null)
+            {
+                try
+                {
+                    var groupIds = await SessionRosterService.ValidateActiveStudentIdsAsync(
+                        _db, tenantId, request.StudentIds, ct);
+                    x.RosterOnly = groupIds.Count > 0;
+                    await SessionRosterService.SyncGroupBookingsAsync(_db, tenantId, x.Id, groupIds, ct);
+                }
+                catch (InvalidOperationException)
+                {
+                    return BadRequest("One or more clients were not found on the active roster.");
+                }
+            }
         }
         x.Location = request.Location;
         x.UpdatedAt = DateTime.UtcNow;
@@ -411,6 +464,38 @@ public class SessionsController : ControllerBase
         var assigned = await LoadAssignedCoachesAsync(x.Id, ct);
         var canMark = await CanTakeAttendanceForSessionAsync(x, ct);
         return Ok(SessionDtoMapper.ToDetailDto(x, bookings, attendances, assigned, canMark));
+    }
+
+    [HttpPost("{id:guid}/bookings")]
+    public async Task<ActionResult<SessionDetailDto>> AddBookings(Guid id, [FromBody] AddSessionBookingsRequest request, CancellationToken ct)
+    {
+        if (_tenant.TenantId == null) return Forbid();
+        if (request.StudentIds == null || request.StudentIds.Count == 0)
+            return BadRequest("Select at least one client.");
+
+        var session = await _db.Sessions
+            .Include(s => s.Attendances).ThenInclude(a => a.Student)
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (session == null) return NotFound();
+        if (!await CanTakeAttendanceForSessionAsync(session, ct)) return Forbid();
+
+        var tenantId = _tenant.TenantId.Value;
+        try
+        {
+            var ids = await SessionRosterService.ValidateActiveStudentIdsAsync(_db, tenantId, request.StudentIds, ct);
+            await SessionRosterService.BookStudentsAsync(_db, tenantId, session.Id, ids, ct);
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (InvalidOperationException)
+        {
+            return BadRequest("One or more clients were not found on the active roster.");
+        }
+
+        var bookings = await LoadSessionBookingsAsync(session.Id, ct);
+        var attendances = session.Attendances.Select(a => new AttendanceDto(a.Id, a.StudentId, a.Student.Name, a.Present, a.SessionsConsumed)).ToList();
+        var assigned = await LoadAssignedCoachesAsync(session.Id, ct);
+        var canMark = await CanTakeAttendanceForSessionAsync(session, ct);
+        return Ok(SessionDtoMapper.ToDetailDto(session, bookings, attendances, assigned, canMark));
     }
 
     [HttpDelete("{id:guid}")]

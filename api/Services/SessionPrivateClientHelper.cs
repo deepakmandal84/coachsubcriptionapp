@@ -38,12 +38,13 @@ public static class SessionPrivateClientHelper
     public static IQueryable<Session> ApplyClientVisibilityFilter(IQueryable<Session> query, Guid? viewerStudentId) =>
         viewerStudentId.HasValue
             ? query.Where(s =>
-                s.Type != SessionType.Private ||
+                (s.Type == SessionType.Group && !s.RosterOnly) ||
                 s.Bookings.Any(b => b.StudentId == viewerStudentId.Value))
-            : query.Where(s => s.Type != SessionType.Private);
+            : query.Where(s => s.Type == SessionType.Group && !s.RosterOnly);
 
-    /// <summary>Clients may self-book group sessions only; PT is assigned by the coach.</summary>
-    public static bool CanClientSelfBook(Session session) => !IsPrivate(session.Type);
+    /// <summary>Clients may self-book open group sessions only.</summary>
+    public static bool CanClientSelfBook(Session session) =>
+        session.Type == SessionType.Group && !session.RosterOnly;
 
     public static async Task EnsureBookingAsync(
         AppDbContext db,

@@ -11,6 +11,8 @@ public class Session
     public SessionType Type { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Location { get; set; }
+    /// <summary>When true (coach-picked group roster), only booked clients see or join this session.</summary>
+    public bool RosterOnly { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 

@@ -46,6 +46,7 @@ public static class SessionDtoMapper
             session.Type.ToString(),
             session.Title,
             session.Location,
+            session.RosterOnly,
             bookings,
             attendances,
             assigned,

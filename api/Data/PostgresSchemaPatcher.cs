@@ -63,6 +63,12 @@ public static class PostgresSchemaPatcher
 
         await db.Database.ExecuteSqlRawAsync(
             """
+            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS "RosterOnly" boolean NOT NULL DEFAULT FALSE;
+            """,
+            cancellationToken: ct);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
             INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
             VALUES ('20260320120000_SessionBookingsAndScheduleShare', '8.0.11')
             ON CONFLICT ("MigrationId") DO NOTHING;

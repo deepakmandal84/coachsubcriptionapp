@@ -5,6 +5,7 @@ import Select from '../ui/Select'
 import Input from '../ui/Input'
 import SessionPickerCalendar from './SessionPickerCalendar'
 import PrivateSessionClientField from './PrivateSessionClientField'
+import SessionClientsMultiSelect from './SessionClientsMultiSelect'
 import { toLocalDateKey } from '../../utils/dateKey'
 import { sessionsApi, studentsApi } from '../../api'
 import { applyClientToPrivateForm, isPersonalTrainingType } from '../../utils/privateSessionForm'
@@ -16,6 +17,7 @@ const emptyForm = (coachIds) => ({
   location: '',
   coachIds,
   studentId: '',
+  studentIds: [],
 })
 
 export default function BulkSessionsModal({ open, onClose, team, canManageSessions, coachId, existingSessions, onCreated }) {
@@ -111,6 +113,7 @@ export default function BulkSessionsModal({ open, onClose, team, canManageSessio
         location: form.location.trim() || undefined,
         coachIds: canManageSessions ? form.coachIds : undefined,
         studentId: isPersonalTrainingType(form.type) ? form.studentId : undefined,
+        studentIds: !isPersonalTrainingType(form.type) && form.studentIds?.length ? form.studentIds : undefined,
       })
       onCreated?.(result.createdCount)
       setSelectedKeys(new Set())
@@ -187,9 +190,8 @@ export default function BulkSessionsModal({ open, onClose, team, canManageSessio
                   const type = e.target.value
                   setForm((f) => {
                     const next = { ...f, type }
-                    if (!isPersonalTrainingType(type)) return { ...next, studentId: '' }
-                    if (next.studentId) return applyClientToPrivateForm(next, next.studentId, students)
-                    return next
+                    if (!isPersonalTrainingType(type)) return { ...next, studentId: '', studentIds: next.studentIds || [] }
+                    return { ...applyClientToPrivateForm(next, next.studentId, students), studentIds: [] }
                   })
                 }}
               >
@@ -202,6 +204,15 @@ export default function BulkSessionsModal({ open, onClose, team, canManageSessio
               students={students}
               onStudentChange={(studentId) => setForm((f) => applyClientToPrivateForm(f, studentId, students))}
             />
+            {!isPersonalTrainingType(form.type) && (
+              <SessionClientsMultiSelect
+                label="Clients joining (optional)"
+                hint="Select clients to create a fixed roster for each day. Leave empty for open group classes."
+                students={students}
+                selectedIds={form.studentIds}
+                onChange={(studentIds) => setForm((f) => ({ ...f, studentIds }))}
+              />
+            )}
             <Input
               label={isPersonalTrainingType(form.type) ? 'Title' : 'Title *'}
               value={form.title}

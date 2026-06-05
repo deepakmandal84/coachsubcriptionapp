@@ -142,6 +142,8 @@ export const sessionsApi = {
   getAttendance: (id) => api(`/sessions/${id}/attendance`),
   setAttendance: (id, items) =>
     api(`/sessions/${id}/attendance`, { method: 'PUT', body: JSON.stringify({ items }) }),
+  addBookings: (id, studentIds) =>
+    api(`/sessions/${id}/bookings`, { method: 'POST', body: JSON.stringify({ studentIds }) }),
 }
 
 /** Public schedule (coach share link). */
