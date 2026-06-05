@@ -56,13 +56,14 @@ public class ScheduleController : ControllerBase
                     BookingCount = x.Bookings.Count,
                     AttendanceCount = x.Attendances.Count,
                     AttendedCount = x.Attendances.Count(a => a.Present),
+                    BookedStudentNames = x.Bookings.OrderBy(b => b.Student.Name).Select(b => b.Student.Name).ToList(),
                     CoachIds = x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.CoachId).ToList(),
                     CoachNames = x.SessionCoaches.OrderBy(sc => sc.Coach.Name).Select(sc => sc.Coach.Name).ToList(),
                 })
                 .ToListAsync(ct);
             sessions = rows.Select(r => SessionDtoMapper.ToListDto(
                 r.Id, r.Date, r.StartTime, r.Type, r.Title, r.Location, r.CreatedAt,
-                r.BookingCount, r.AttendanceCount, r.AttendedCount, r.CoachIds, r.CoachNames)).ToList();
+                r.BookingCount, r.AttendanceCount, r.AttendedCount, r.BookedStudentNames, r.CoachIds, r.CoachNames)).ToList();
         }
         catch (PostgresException ex) when (ex.SqlState is "42P01" or "42703")
         {
@@ -79,11 +80,12 @@ public class ScheduleController : ControllerBase
                     BookingCount = x.Bookings.Count,
                     AttendanceCount = x.Attendances.Count,
                     AttendedCount = x.Attendances.Count(a => a.Present),
+                    BookedStudentNames = x.Bookings.OrderBy(b => b.Student.Name).Select(b => b.Student.Name).ToList(),
                 })
                 .ToListAsync(ct);
             sessions = rows.Select(r => SessionDtoMapper.ToListDto(
                 r.Id, r.Date, r.StartTime, r.Type, r.Title, r.Location, r.CreatedAt,
-                r.BookingCount, r.AttendanceCount, r.AttendedCount, new List<Guid>(), new List<string>())).ToList();
+                r.BookingCount, r.AttendanceCount, r.AttendedCount, r.BookedStudentNames, new List<Guid>(), new List<string>())).ToList();
         }
 
         var packages = await _db.Packages.AsNoTracking()

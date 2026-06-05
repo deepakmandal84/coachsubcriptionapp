@@ -3,19 +3,24 @@ import { Link } from 'react-router-dom'
 import { sessionsApi, coachApi, studentsApi } from '../api'
 import PrivateSessionClientField from '../components/sessions/PrivateSessionClientField'
 import SessionClientsMultiSelect from '../components/sessions/SessionClientsMultiSelect'
+import SessionsCalendarView from '../components/sessions/SessionsCalendarView'
 import { applyClientToPrivateForm, isPersonalTrainingType, personalTrainingTitle } from '../utils/privateSessionForm'
-
-function sessionTypeLabel(type) {
-  return type === 'Private' ? 'Personal Training' : type
-}
 import { useAuth } from '../AuthContext'
 import { useAcademyPermissions } from '../hooks/useAcademyPermissions'
 import { useAppPaths } from '../hooks/useAppPaths'
-import { FiCalendar, FiCheckCircle, FiClock, FiEdit2, FiLayers, FiTrash2, FiUsers } from 'react-icons/fi'
+import { FiCalendar, FiCheckCircle, FiClock, FiEdit2, FiLayers, FiList, FiTrash2, FiUsers } from 'react-icons/fi'
 import { localDateInputValue, toLocalDateKey } from '../utils/dateKey'
 import { formatSessionDate, formatSessionTime, sessionDateForInput } from '../utils/sessionFormat'
 import BulkSessionsModal from '../components/sessions/BulkSessionsModal'
 import { useToast } from '../context/ToastContext'
+
+function sessionTypeLabel(type) {
+  return type === 'Private' ? 'Personal Training' : type
+}
+
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
 
 export default function Sessions() {
   const paths = useAppPaths()
@@ -31,6 +36,9 @@ export default function Sessions() {
   const [students, setStudents] = useState([])
   const [err, setErr] = useState('')
   const [activeTab, setActiveTab] = useState('upcoming')
+  const [pageView, setPageView] = useState('list')
+  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()))
+  const [selectedDateKey, setSelectedDateKey] = useState(() => toLocalDateKey(new Date()))
   const [modal, setModal] = useState(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -45,19 +53,34 @@ export default function Sessions() {
     studentIds: [],
   })
 
-  function load() {
-    const now = new Date()
-    const from = localDateInputValue(new Date(now.getFullYear(), now.getMonth() - 3, 1))
-    const to = localDateInputValue(new Date(now.getFullYear(), now.getMonth() + 2, 0))
+  function fetchSessions(from, to) {
     const params = { from, to }
     if (filterCoachId) params.assignedCoachId = filterCoachId
-    sessionsApi
+    return sessionsApi
       .list(params)
       .then((data) => {
         setList(data)
         setErr('')
       })
       .catch((e) => setErr(e instanceof Error ? e.message : 'Failed'))
+  }
+
+  function loadList() {
+    const now = new Date()
+    const from = localDateInputValue(new Date(now.getFullYear(), now.getMonth() - 3, 1))
+    const to = localDateInputValue(new Date(now.getFullYear(), now.getMonth() + 2, 0))
+    return fetchSessions(from, to)
+  }
+
+  function loadCalendarMonth(monthDate) {
+    const from = localDateInputValue(monthDate)
+    const to = localDateInputValue(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0))
+    return fetchSessions(from, to)
+  }
+
+  function reload() {
+    if (pageView === 'calendar') return loadCalendarMonth(calendarMonth)
+    return loadList()
   }
 
   useEffect(() => {
@@ -68,8 +91,9 @@ export default function Sessions() {
       setFilterCoachId(String(coach.id))
       return
     }
-    load()
-  }, [filterCoachId, isStaffCoach, coach?.id, team.length])
+    if (pageView === 'calendar') loadCalendarMonth(calendarMonth)
+    else loadList()
+  }, [filterCoachId, isStaffCoach, coach?.id, team.length, pageView, calendarMonth])
 
   useEffect(() => {
     if (!canManageSessions) return
@@ -181,7 +205,7 @@ export default function Sessions() {
       })
       setModal(null)
       setErr('')
-      load()
+      reload()
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
   }
 
@@ -209,7 +233,7 @@ export default function Sessions() {
       })
       setModal(null)
       setErr('')
-      load()
+      reload()
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
   }
 
@@ -217,7 +241,7 @@ export default function Sessions() {
     if (!confirm('Delete this session?')) return
     try {
       await sessionsApi.delete(id)
-      load()
+      reload()
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
   }
 
@@ -247,7 +271,7 @@ export default function Sessions() {
           </span>
           Sessions
         </h1>
-        {activeTab === 'upcoming' && canManageSessions && (
+        {(pageView === 'list' ? activeTab === 'upcoming' : true) && canManageSessions && (
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -287,25 +311,59 @@ export default function Sessions() {
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-gray-200 mb-4">
-        <button
-          type="button"
-          onClick={() => setActiveTab('upcoming')}
-          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'upcoming' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-brand' : 'text-gray-600 hover:text-gray-900'}`}
-        >
-          <FiClock className="text-base" />
-          Upcoming
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'history' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-brand' : 'text-gray-600 hover:text-gray-900'}`}
-        >
-          <FiCheckCircle className="text-base" />
-          History ({historySessions.length})
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div className="flex gap-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50 w-fit">
+          <button
+            type="button"
+            onClick={() => setPageView('list')}
+            className={`px-3 py-1.5 text-sm font-medium rounded-md inline-flex items-center gap-1.5 ${pageView === 'list' ? 'bg-white text-brand shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            <FiList className="text-base" />
+            List
+          </button>
+          <button
+            type="button"
+            onClick={() => setPageView('calendar')}
+            className={`px-3 py-1.5 text-sm font-medium rounded-md inline-flex items-center gap-1.5 ${pageView === 'calendar' ? 'bg-white text-brand shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            <FiCalendar className="text-base" />
+            Calendar
+          </button>
+        </div>
+
+        {pageView === 'list' && (
+          <div className="flex gap-1 border-b border-gray-200 sm:border-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('upcoming')}
+              className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'upcoming' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-brand' : 'text-gray-600 hover:text-gray-900'}`}
+            >
+              <FiClock className="text-base" />
+              Upcoming
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('history')}
+              className={`px-4 py-2 text-sm font-medium rounded-t inline-flex items-center gap-2 ${activeTab === 'history' ? 'bg-white border border-b-0 border-gray-200 -mb-px text-brand' : 'text-gray-600 hover:text-gray-900'}`}
+            >
+              <FiCheckCircle className="text-base" />
+              History ({historySessions.length})
+            </button>
+          </div>
+        )}
       </div>
 
+      {pageView === 'calendar' ? (
+        <SessionsCalendarView
+          sessions={list}
+          month={calendarMonth}
+          onMonthChange={setCalendarMonth}
+          selectedDateKey={selectedDateKey}
+          onSelectDate={setSelectedDateKey}
+          sessionTypeLabelFn={sessionTypeLabel}
+          paths={paths}
+        />
+      ) : (
       <div className="space-y-3">
         <div className="hidden md:block bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
@@ -407,6 +465,7 @@ export default function Sessions() {
           )}
         </div>
       </div>
+      )}
 
       {bulkOpen && (
         <BulkSessionsModal
@@ -418,7 +477,7 @@ export default function Sessions() {
           existingSessions={list}
           onCreated={(count) => {
             toast.success(`Created ${count} session${count === 1 ? '' : 's'}`)
-            load()
+            reload()
           }}
         />
       )}

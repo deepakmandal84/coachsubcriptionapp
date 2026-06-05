@@ -1,7 +1,7 @@
 namespace CoachSubscriptionApi.DTOs;
 
 public record SessionBookingDto(Guid Id, Guid StudentId, string StudentName, string? StudentPhoneLast4);
-public record SessionListDto(Guid Id, string Date, string StartTime, string Type, string Title, string? Location, DateTime CreatedAt, int BookingCount, int AttendanceCount, int AttendedCount, List<Guid> AssignedCoachIds, List<string> CoachNames);
+public record SessionListDto(Guid Id, string Date, string StartTime, string Type, string Title, string? Location, DateTime CreatedAt, int BookingCount, int AttendanceCount, int AttendedCount, List<string> BookedStudentNames, List<Guid> AssignedCoachIds, List<string> CoachNames);
 public record AssignedCoachDto(Guid Id, string Name);
 public record SessionDetailDto(Guid Id, string Date, string StartTime, string Type, string Title, string? Location, bool RosterOnly, List<SessionBookingDto> Bookings, List<AttendanceDto> Attendances, List<AssignedCoachDto> AssignedCoaches, DateTime CreatedAt, bool CanMarkAttendance);
 public record CreateSessionRequest(string Date, string StartTime, string Type, string Title, string? Location, List<Guid>? CoachIds, Guid? StudentId, List<Guid>? StudentIds);

@@ -19,6 +19,7 @@ public static class SessionDtoMapper
         int bookingCount,
         int attendanceCount,
         int attendedCount,
+        List<string> bookedStudentNames,
         List<Guid> coachIds,
         List<string> coachNames) =>
         new(
@@ -32,6 +33,7 @@ public static class SessionDtoMapper
             bookingCount,
             attendanceCount,
             attendedCount,
+            bookedStudentNames,
             coachIds,
             coachNames);
 
