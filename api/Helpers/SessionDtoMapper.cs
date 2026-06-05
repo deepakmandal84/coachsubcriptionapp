@@ -18,6 +18,7 @@ public static class SessionDtoMapper
         DateTime createdAt,
         int bookingCount,
         int attendanceCount,
+        int attendedCount,
         List<Guid> coachIds,
         List<string> coachNames) =>
         new(
@@ -30,6 +31,7 @@ public static class SessionDtoMapper
             createdAt,
             bookingCount,
             attendanceCount,
+            attendedCount,
             coachIds,
             coachNames);
 

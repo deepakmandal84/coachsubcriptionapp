@@ -12,7 +12,7 @@ import { useAuth } from '../AuthContext'
 import { useAcademyPermissions } from '../hooks/useAcademyPermissions'
 import { useAppPaths } from '../hooks/useAppPaths'
 import { FiCalendar, FiCheckCircle, FiClock, FiEdit2, FiLayers, FiTrash2, FiUsers } from 'react-icons/fi'
-import { localDateInputValue } from '../utils/dateKey'
+import { localDateInputValue, toLocalDateKey } from '../utils/dateKey'
 import { formatSessionDate, formatSessionTime, sessionDateForInput } from '../utils/sessionFormat'
 import BulkSessionsModal from '../components/sessions/BulkSessionsModal'
 import { useToast } from '../context/ToastContext'
@@ -221,8 +221,18 @@ export default function Sessions() {
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
   }
 
-  const historySessions = list.filter(s => (s.attendanceCount ?? 0) > 0)
-  const upcomingSessions = list.filter(s => (s.attendanceCount ?? 0) === 0)
+  function sessionChronologicalKey(s) {
+    const date = toLocalDateKey(s.date)
+    const time = (s.startTime || '00:00').slice(0, 5)
+    return `${date}T${time}`
+  }
+
+  const historySessions = list
+    .filter(s => (s.attendanceCount ?? 0) > 0)
+    .sort((a, b) => sessionChronologicalKey(b).localeCompare(sessionChronologicalKey(a)))
+  const upcomingSessions = list
+    .filter(s => (s.attendanceCount ?? 0) === 0)
+    .sort((a, b) => sessionChronologicalKey(a).localeCompare(sessionChronologicalKey(b)))
   const shownSessions = activeTab === 'history' ? historySessions : upcomingSessions
   const shownEmptyMsg = activeTab === 'history' ? 'No completed sessions yet.' : 'No upcoming sessions in this range.'
 
@@ -307,7 +317,7 @@ export default function Sessions() {
                 <th className="text-left p-3">Title</th>
                 <th className="text-left p-3">Coaches</th>
                 <th className="text-left p-3">Location</th>
-                <th className="text-left p-3 w-24">Booked</th>
+                <th className="text-left p-3 w-24">{activeTab === 'history' ? 'Attended' : 'Booked'}</th>
                 <th className="p-3"></th>
               </tr>
             </thead>
@@ -323,7 +333,7 @@ export default function Sessions() {
                   <td className="p-3">
                     <div className="inline-flex items-center gap-1 text-gray-700">
                       <FiUsers className="text-gray-500" />
-                      {s.bookingCount ?? 0}
+                      {activeTab === 'history' ? (s.attendedCount ?? 0) : (s.bookingCount ?? 0)}
                     </div>
                     {activeTab === 'history' && (
                       <div className="text-xs text-green-700 font-medium mt-0.5">Completed</div>
@@ -363,7 +373,12 @@ export default function Sessions() {
                 </div>
                 <div className="text-xs text-gray-500 mt-1">Coaches: {coachNames(s)}</div>
                 <div className="flex items-center justify-between gap-3 mt-2">
-                  <div className="text-sm text-gray-500 inline-flex items-center gap-1"><FiUsers />{s.bookingCount ?? 0} booked</div>
+                  <div className="text-sm text-gray-500 inline-flex items-center gap-1">
+                    <FiUsers />
+                    {activeTab === 'history'
+                      ? `${s.attendedCount ?? 0} attended`
+                      : `${s.bookingCount ?? 0} booked`}
+                  </div>
                   {activeTab === 'history' && (
                     <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-100 text-xs font-medium whitespace-nowrap">
                       Completed
